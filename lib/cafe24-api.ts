@@ -94,7 +94,7 @@ class Cafe24API {
         `grant_type=refresh_token&refresh_token=${refreshToken}`,
         {
           headers: {
-            'Authorization': `Basic ${btoa(`${process.env.CAFE24_CLIENT_ID || 'your_client_id'}:${process.env.CAFE24_CLIENT_SECRET || 'your_client_secret'}`)}`,
+            'Authorization': `Basic ${btoa(`${process.env.NEXT_PUBLIC_CAFE24_CLIENT_ID || 'your_client_id'}:${process.env.NEXT_PUBLIC_CAFE24_CLIENT_SECRET || 'your_client_secret'}`)}`,
             'Content-Type': 'application/x-www-form-urlencoded',
           },
         }
@@ -169,9 +169,9 @@ class Cafe24API {
   getAuthUrl(): string {
     const params = new URLSearchParams({
       response_type: 'code',
-      client_id: process.env.CAFE24_CLIENT_ID || 'your_client_id',
+      client_id: process.env.NEXT_PUBLIC_CAFE24_CLIENT_ID || 'your_client_id',
       state: Math.random().toString(36).substring(7),
-      redirect_uri: process.env.CAFE24_REDIRECT_URI || 'https://spx-price.vercel.app/api/auth/callback',
+      redirect_uri: process.env.NEXT_PUBLIC_CAFE24_REDIRECT_URI || 'https://spx-price.vercel.app/api/auth/callback',
       scope: 'mall.read_product,mall.write_product,mall.read_category,mall.write_category',
     });
 
@@ -182,10 +182,10 @@ class Cafe24API {
     try {
       const response = await axios.post(
         `${CAFE24_BASE_URL}/oauth/token`,
-        `grant_type=authorization_code&code=${code}&redirect_uri=${process.env.CAFE24_REDIRECT_URI || 'https://spx-price.vercel.app/api/auth/callback'}`,
+        `grant_type=authorization_code&code=${code}&redirect_uri=${process.env.NEXT_PUBLIC_CAFE24_REDIRECT_URI || 'https://spx-price.vercel.app/api/auth/callback'}`,
         {
           headers: {
-            'Authorization': `Basic ${btoa(`${process.env.CAFE24_CLIENT_ID || 'your_client_id'}:${process.env.CAFE24_CLIENT_SECRET || 'your_client_secret'}`)}`,
+            'Authorization': `Basic ${btoa(`${process.env.NEXT_PUBLIC_CAFE24_CLIENT_ID || 'your_client_id'}:${process.env.NEXT_PUBLIC_CAFE24_CLIENT_SECRET || 'your_client_secret'}`)}`,
             'Content-Type': 'application/x-www-form-urlencoded',
           },
         }
