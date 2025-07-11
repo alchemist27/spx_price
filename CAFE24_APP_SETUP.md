@@ -2,7 +2,7 @@
 
 ## 배포된 애플리케이션 정보
 
-- **프로덕션 URL**: https://spx-price-be2qls56p-neuron-architecture.vercel.app
+- **프로덕션 URL**: https://spx-price.vercel.app
 - **GitHub 저장소**: https://github.com/alchemist27/spx_price.git
 
 ## 카페24 개발자 센터 앱 등록
@@ -10,10 +10,10 @@
 ### 1. 앱 기본 정보
 - **앱 이름**: SPX Price Manager
 - **앱 설명**: 소펙스코리아 쇼핑몰 상품 가격 관리 시스템
-- **앱 URL**: https://spx-price-be2qls56p-neuron-architecture.vercel.app
+- **앱 URL**: https://spx-price.vercel.app
 
 ### 2. OAuth 설정
-- **Redirect URI**: https://spx-price-be2qls56p-neuron-architecture.vercel.app
+- **Redirect URI**: https://spx-price.vercel.app
 - **Scope**: 
   - `mall.read_product` (상품 조회 권한)
   - `mall.write_product` (상품 수정 권한)
@@ -40,13 +40,13 @@
 ```
 NEXT_PUBLIC_CAFE24_CLIENT_ID=발급받은_클라이언트_ID
 NEXT_PUBLIC_CAFE24_CLIENT_SECRET=발급받은_클라이언트_시크릿
-NEXT_PUBLIC_CAFE24_REDIRECT_URI=https://spx-price-be2qls56p-neuron-architecture.vercel.app
+NEXT_PUBLIC_CAFE24_REDIRECT_URI=https://spx-price.vercel.app
 ```
 
 ## 테스트 방법
 
 1. 환경 변수 설정 후 애플리케이션 재배포
-2. https://spx-price-be2qls56p-neuron-architecture.vercel.app 접속
+2. https://spx-price.vercel.app 접속
 3. "Cafe24로 로그인" 버튼 클릭
 4. OAuth 인증 진행
 5. 상품 목록 확인 및 가격 수정 테스트
