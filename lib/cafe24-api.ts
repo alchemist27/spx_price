@@ -117,52 +117,33 @@ class Cafe24API {
   }
 
   async getProducts(): Promise<Cafe24Product[]> {
-    const token = await this.getValidToken();
-    if (!token) {
-      throw new Error('No valid token available');
-    }
-
     try {
-      const response = await axios.get(`${CAFE24_BASE_URL}/admin/products`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'X-Cafe24-Api-Version': '2025-06-01',
-        },
+      console.log('📦 상품 목록 조회 시작 (API 라우터 사용)');
+      
+      const response = await axios.get('/api/products');
+      
+      console.log('✅ 상품 목록 조회 성공:', {
+        productCount: response.data.products?.length || 0
       });
 
       return response.data.products || [];
     } catch (error) {
-      console.error('Failed to fetch products:', error);
+      console.error('❌ 상품 목록 조회 실패:', error);
       throw error;
     }
   }
 
   async updateProduct(productNo: number, updateData: Cafe24ProductUpdateRequest): Promise<any> {
-    const token = await this.getValidToken();
-    if (!token) {
-      throw new Error('No valid token available');
-    }
-
     try {
-      const response = await axios.put(
-        `${CAFE24_BASE_URL}/admin/products/${productNo}`,
-        {
-          shop_no: 1,
-          request: updateData,
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-            'X-Cafe24-Api-Version': '2025-06-01',
-          },
-        }
-      );
+      console.log('🔄 상품 업데이트 시작 (API 라우터 사용):', { productNo });
+      
+      const response = await axios.put(`/api/products/${productNo}`, updateData);
+      
+      console.log('✅ 상품 업데이트 성공:', { productNo });
 
       return response.data;
     } catch (error) {
-      console.error('Failed to update product:', error);
+      console.error('❌ 상품 업데이트 실패:', error);
       throw error;
     }
   }
