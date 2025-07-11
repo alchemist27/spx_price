@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { getToken } from '@/lib/firebase';
+import { getToken, testFirestoreWrite } from '@/lib/firebase';
 import { cafe24API, Cafe24Product } from '@/lib/cafe24-api';
 import LoginForm from '@/components/LoginForm';
 import ProductTable from '@/components/ProductTable';
@@ -17,6 +17,8 @@ export default function Home() {
   const searchParams = useSearchParams();
 
   useEffect(() => {
+    // Firestore 쓰기 테스트
+    testFirestoreWrite();
     checkAuthStatus();
   }, []);
 

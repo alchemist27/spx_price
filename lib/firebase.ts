@@ -60,4 +60,18 @@ export const isTokenExpired = (token: Cafe24Token): boolean => {
   return Date.now() >= token.expires_at;
 };
 
+export const testFirestoreWrite = async () => {
+  try {
+    await setDoc(doc(db, 'tokens', 'test'), {
+      message: 'Firestore write test',
+      timestamp: Date.now(),
+    });
+    console.log('Firestore write test: 성공');
+    return true;
+  } catch (error) {
+    console.error('Firestore write test: 실패', error);
+    return false;
+  }
+};
+
 export { db }; 
