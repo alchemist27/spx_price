@@ -171,7 +171,7 @@ class Cafe24API {
       response_type: 'code',
       client_id: process.env.NEXT_PUBLIC_CAFE24_CLIENT_ID || 'your_client_id',
       state: Math.random().toString(36).substring(7),
-      redirect_uri: process.env.NEXT_PUBLIC_CAFE24_REDIRECT_URI || 'http://localhost:3000',
+      redirect_uri: process.env.NEXT_PUBLIC_CAFE24_REDIRECT_URI || 'http://localhost:3000/api/auth/callback',
       scope: 'mall.read_product,mall.write_product',
     });
 
@@ -182,7 +182,7 @@ class Cafe24API {
     try {
       const response = await axios.post(
         `${CAFE24_BASE_URL}/oauth/token`,
-        `grant_type=authorization_code&code=${code}&redirect_uri=${process.env.NEXT_PUBLIC_CAFE24_REDIRECT_URI || 'http://localhost:3000'}`,
+        `grant_type=authorization_code&code=${code}&redirect_uri=${process.env.NEXT_PUBLIC_CAFE24_REDIRECT_URI || 'http://localhost:3000/api/auth/callback'}`,
         {
           headers: {
             'Authorization': `Basic ${btoa(`${process.env.NEXT_PUBLIC_CAFE24_CLIENT_ID || 'your_client_id'}:${process.env.NEXT_PUBLIC_CAFE24_CLIENT_SECRET || 'your_client_secret'}`)}`,

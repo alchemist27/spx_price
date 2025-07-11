@@ -13,7 +13,7 @@
 - **앱 URL**: https://spx-price.vercel.app
 
 ### 2. OAuth 설정
-- **Redirect URI**: https://spx-price.vercel.app
+- **Redirect URI**: https://spx-price.vercel.app/api/auth/callback
 - **Scope**: 
   - `mall.read_product` (상품 조회 권한)
   - `mall.write_product` (상품 수정 권한)
@@ -40,7 +40,7 @@
 ```
 NEXT_PUBLIC_CAFE24_CLIENT_ID=발급받은_클라이언트_ID
 NEXT_PUBLIC_CAFE24_CLIENT_SECRET=발급받은_클라이언트_시크릿
-NEXT_PUBLIC_CAFE24_REDIRECT_URI=https://spx-price.vercel.app
+NEXT_PUBLIC_CAFE24_REDIRECT_URI=https://spx-price.vercel.app/api/auth/callback
 ```
 
 ## 테스트 방법

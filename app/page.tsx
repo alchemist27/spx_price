@@ -21,9 +21,15 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const code = searchParams.get('code');
-    if (code) {
-      handleAuthCallback(code);
+    const auth = searchParams.get('auth');
+    const error = searchParams.get('error');
+    
+    if (auth === 'success') {
+      toast.success('로그인에 성공했습니다.');
+      setIsAuthenticated(true);
+      loadProducts();
+    } else if (error) {
+      toast.error(`로그인 실패: ${error}`);
     }
   }, [searchParams]);
 
@@ -41,24 +47,7 @@ export default function Home() {
     }
   };
 
-  const handleAuthCallback = async (code: string) => {
-    setIsLoading(true);
-    try {
-      const token = await cafe24API.exchangeCodeForToken(code);
-      if (token) {
-        setIsAuthenticated(true);
-        toast.success('로그인에 성공했습니다.');
-        loadProducts();
-      } else {
-        toast.error('로그인에 실패했습니다.');
-      }
-    } catch (error) {
-      console.error('Auth callback failed:', error);
-      toast.error('로그인 처리 중 오류가 발생했습니다.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+
 
   const loadProducts = async () => {
     setIsLoadingProducts(true);
