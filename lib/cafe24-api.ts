@@ -100,10 +100,11 @@ class Cafe24API {
         }
       );
 
+      const expiresIn = response.data.expires_in || 3600; // 기본값: 1시간
       const newToken: Cafe24Token = {
         access_token: response.data.access_token,
         refresh_token: response.data.refresh_token || refreshToken,
-        expires_at: Date.now() + (response.data.expires_in * 1000),
+        expires_at: Date.now() + (expiresIn * 1000),
         token_type: response.data.token_type,
       };
 
@@ -200,12 +201,19 @@ class Cafe24API {
         expiresIn: response.data.expires_in
       });
 
+      const expiresIn = response.data.expires_in || 3600; // 기본값: 1시간
       const token: Cafe24Token = {
         access_token: response.data.access_token,
         refresh_token: response.data.refresh_token,
-        expires_at: Date.now() + (response.data.expires_in * 1000),
+        expires_at: Date.now() + (expiresIn * 1000),
         token_type: response.data.token_type,
       };
+      
+      console.log('📅 토큰 만료 시간 계산:', {
+        expiresIn: expiresIn,
+        expiresAt: new Date(token.expires_at).toISOString(),
+        currentTime: new Date().toISOString()
+      });
 
       console.log('💾 Firestore에 토큰 저장 시도...');
       const saveResult = await saveToken(token);
