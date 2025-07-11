@@ -37,18 +37,18 @@ cp env.example .env.local
 ```
 
 #### Cafe24 API 설정
-- `NEXT_PUBLIC_CAFE24_MALL_ID`: 카페24 쇼핑몰 ID
-- `NEXT_PUBLIC_CAFE24_CLIENT_ID`: 카페24 앱 클라이언트 ID
-- `NEXT_PUBLIC_CAFE24_CLIENT_SECRET`: 카페24 앱 클라이언트 시크릿
+- `NEXT_PUBLIC_CAFE24_MALL_ID`: sopexkorea (소펙스코리아 쇼핑몰)
+- `NEXT_PUBLIC_CAFE24_CLIENT_ID`: 카페24 앱 클라이언트 ID (발급 필요)
+- `NEXT_PUBLIC_CAFE24_CLIENT_SECRET`: 카페24 앱 클라이언트 시크릿 (발급 필요)
 - `NEXT_PUBLIC_CAFE24_REDIRECT_URI`: OAuth 리다이렉트 URI
 
-#### Firebase 설정
-- `NEXT_PUBLIC_FIREBASE_API_KEY`: Firebase API 키
-- `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`: Firebase 인증 도메인
-- `NEXT_PUBLIC_FIREBASE_PROJECT_ID`: Firebase 프로젝트 ID
-- `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`: Firebase 스토리지 버킷
-- `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`: Firebase 메시징 발신자 ID
-- `NEXT_PUBLIC_FIREBASE_APP_ID`: Firebase 앱 ID
+#### Firebase 설정 (이미 구성됨)
+- `NEXT_PUBLIC_FIREBASE_API_KEY`: AIzaSyDruR-6zx9lP26r8Omc1BzNa2inAKhPr54
+- `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`: spx-price.firebaseapp.com
+- `NEXT_PUBLIC_FIREBASE_PROJECT_ID`: spx-price
+- `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`: spx-price.firebasestorage.app
+- `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`: 751338163184
+- `NEXT_PUBLIC_FIREBASE_APP_ID`: 1:751338163184:web:6a86de741b4d8437c5ab35
 
 ### 3. 개발 서버 실행
 
@@ -72,11 +72,11 @@ npm run dev
 
 Vercel 대시보드의 프로젝트 설정에서 다음 환경 변수들을 설정하세요:
 
-- `NEXT_PUBLIC_CAFE24_MALL_ID`
-- `NEXT_PUBLIC_CAFE24_CLIENT_ID`
-- `NEXT_PUBLIC_CAFE24_CLIENT_SECRET`
-- `NEXT_PUBLIC_CAFE24_REDIRECT_URI` (배포된 도메인으로 설정)
-- Firebase 관련 환경 변수들
+- `NEXT_PUBLIC_CAFE24_CLIENT_ID`: 카페24 앱 클라이언트 ID
+- `NEXT_PUBLIC_CAFE24_CLIENT_SECRET`: 카페24 앱 클라이언트 시크릿
+- `NEXT_PUBLIC_CAFE24_REDIRECT_URI`: 배포된 도메인 (예: https://your-app.vercel.app)
+
+Firebase 설정은 이미 코드에 포함되어 있습니다.
 
 ## 사용 방법
 
