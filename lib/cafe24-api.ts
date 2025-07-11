@@ -105,7 +105,7 @@ class Cafe24API {
         access_token: response.data.access_token,
         refresh_token: response.data.refresh_token || refreshToken,
         expires_at: Date.now() + (expiresIn * 1000),
-        token_type: response.data.token_type,
+        token_type: response.data.token_type || 'Bearer', // 기본값: Bearer
       };
 
       await saveToken(newToken);
@@ -198,7 +198,8 @@ class Cafe24API {
         status: response.status,
         hasAccessToken: !!response.data.access_token,
         hasRefreshToken: !!response.data.refresh_token,
-        expiresIn: response.data.expires_in
+        expiresIn: response.data.expires_in,
+        tokenType: response.data.token_type
       });
 
       const expiresIn = response.data.expires_in || 3600; // 기본값: 1시간
@@ -206,7 +207,7 @@ class Cafe24API {
         access_token: response.data.access_token,
         refresh_token: response.data.refresh_token,
         expires_at: Date.now() + (expiresIn * 1000),
-        token_type: response.data.token_type,
+        token_type: response.data.token_type || 'Bearer', // 기본값: Bearer
       };
       
       console.log('📅 토큰 만료 시간 계산:', {
