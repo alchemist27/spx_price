@@ -22,25 +22,49 @@ export interface Cafe24Token {
 
 export const saveToken = async (token: Cafe24Token) => {
   try {
+    console.log('🔥 Firestore 저장 시도:', { 
+      collection: 'tokens', 
+      document: 'cafe24',
+      hasToken: !!token.access_token,
+      expiresAt: new Date(token.expires_at).toISOString()
+    });
+    
     await setDoc(doc(db, 'tokens', 'cafe24'), token);
+    console.log('✅ Firestore 저장 완료');
     return true;
   } catch (error) {
-    console.error('Error saving token:', error);
+    console.error('❌ Firestore 저장 에러:', error);
+    if (error instanceof Error) {
+      console.error('에러 메시지:', error.message);
+      console.error('에러 스택:', error.stack);
+    }
     return false;
   }
 };
 
 export const getToken = async (): Promise<Cafe24Token | null> => {
   try {
+    console.log('🔍 Firestore에서 토큰 조회 시도...');
     const docRef = doc(db, 'tokens', 'cafe24');
     const docSnap = await getDoc(docRef);
     
     if (docSnap.exists()) {
-      return docSnap.data() as Cafe24Token;
+      const tokenData = docSnap.data() as Cafe24Token;
+      console.log('✅ 토큰 조회 성공:', {
+        hasAccessToken: !!tokenData.access_token,
+        expiresAt: new Date(tokenData.expires_at).toISOString(),
+        isExpired: Date.now() >= tokenData.expires_at
+      });
+      return tokenData;
+    } else {
+      console.log('❌ 토큰 문서가 존재하지 않음');
     }
     return null;
   } catch (error) {
-    console.error('Error getting token:', error);
+    console.error('❌ 토큰 조회 에러:', error);
+    if (error instanceof Error) {
+      console.error('에러 메시지:', error.message);
+    }
     return null;
   }
 };

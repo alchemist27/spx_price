@@ -180,6 +180,8 @@ class Cafe24API {
 
   async exchangeCodeForToken(code: string): Promise<Cafe24Token | null> {
     try {
+      console.log('🔄 토큰 교환 시작:', { code: code.substring(0, 10) + '...' });
+      
       const response = await axios.post(
         `${CAFE24_BASE_URL}/oauth/token`,
         `grant_type=authorization_code&code=${code}&redirect_uri=${process.env.NEXT_PUBLIC_CAFE24_REDIRECT_URI || 'https://spx-price.vercel.app/api/auth/callback'}`,
@@ -191,6 +193,13 @@ class Cafe24API {
         }
       );
 
+      console.log('✅ 카페24 API 응답 성공:', { 
+        status: response.status,
+        hasAccessToken: !!response.data.access_token,
+        hasRefreshToken: !!response.data.refresh_token,
+        expiresIn: response.data.expires_in
+      });
+
       const token: Cafe24Token = {
         access_token: response.data.access_token,
         refresh_token: response.data.refresh_token,
@@ -198,10 +207,25 @@ class Cafe24API {
         token_type: response.data.token_type,
       };
 
-      await saveToken(token);
+      console.log('💾 Firestore에 토큰 저장 시도...');
+      const saveResult = await saveToken(token);
+      
+      if (saveResult) {
+        console.log('✅ 토큰 저장 성공');
+      } else {
+        console.error('❌ 토큰 저장 실패');
+      }
+
       return token;
     } catch (error) {
-      console.error('Failed to exchange code for token:', error);
+      console.error('❌ 토큰 교환 실패:', error);
+      if (axios.isAxiosError(error)) {
+        console.error('API 에러 상세:', {
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          data: error.response?.data
+        });
+      }
       return null;
     }
   }

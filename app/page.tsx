@@ -37,13 +37,21 @@ export default function Home() {
 
   const checkAuthStatus = async () => {
     try {
+      console.log('🔍 인증 상태 확인 중...');
       const token = await getToken();
       if (token) {
+        console.log('✅ 저장된 토큰 발견:', { 
+          hasAccessToken: !!token.access_token,
+          expiresAt: new Date(token.expires_at).toISOString(),
+          isExpired: Date.now() >= token.expires_at
+        });
         setIsAuthenticated(true);
         loadProducts();
+      } else {
+        console.log('❌ 저장된 토큰 없음');
       }
     } catch (error) {
-      console.error('Auth check failed:', error);
+      console.error('❌ 인증 상태 확인 실패:', error);
     } finally {
       setIsLoading(false);
     }
