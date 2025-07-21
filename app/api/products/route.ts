@@ -8,6 +8,13 @@ export async function GET(request: NextRequest) {
   try {
     console.log('📦 상품 목록 API 호출 시작');
     
+    // URL 파라미터 추출
+    const { searchParams } = new URL(request.url);
+    const limit = Math.min(parseInt(searchParams.get('limit') || '100'), 100); // 최대 100개
+    const offset = parseInt(searchParams.get('offset') || '0');
+    
+    console.log('📋 페이지네이션 파라미터:', { limit, offset });
+    
     // 저장된 토큰 확인
     const token = await getToken();
     if (!token) {
@@ -29,8 +36,11 @@ export async function GET(request: NextRequest) {
 
     console.log('✅ 유효한 토큰으로 카페24 API 호출');
     
-    // 카페24 API 호출
-    const response = await axios.get(`${CAFE24_BASE_URL}/admin/products`, {
+    // 카페24 API 호출 (limit, offset 포함)
+    const apiUrl = `${CAFE24_BASE_URL}/admin/products?limit=${limit}&offset=${offset}`;
+    console.log('🔗 API URL:', apiUrl);
+    
+    const response = await axios.get(apiUrl, {
       headers: {
         'Authorization': `Bearer ${token.access_token}`,
         'Content-Type': 'application/json',
@@ -40,7 +50,9 @@ export async function GET(request: NextRequest) {
 
     console.log('✅ 카페24 API 응답 성공:', {
       status: response.status,
-      productCount: response.data.products?.length || 0
+      productCount: response.data.products?.length || 0,
+      limit,
+      offset
     });
 
     return NextResponse.json(response.data);
