@@ -552,9 +552,11 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
 
           console.log(`📡 API 호출 2-1: 기존 옵션 정보 조회`);
           const productDetail = await cafe24API.getProductDetail(product.product_no);
-          const currentOptions = productDetail.product?.options || [];
+          const optionsInfo = productDetail.product?.options;
+          const currentOptions = optionsInfo?.options || [];
           
-          console.log(`🔍 현재 옵션 구조:`, currentOptions);
+          console.log(`🔍 현재 옵션 정보:`, optionsInfo);
+          console.log(`🔍 현재 옵션 배열:`, currentOptions);
 
           // original_options 구성 (기존 옵션 구조)
           const originalOptions = currentOptions.map((option: any) => ({
@@ -564,10 +566,11 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
             }))
           }));
 
-          // 새로운 옵션 구조
+          // 새로운 옵션 구조 (기존 option_name 유지)
+          const existingOptionName = currentOptions.length > 0 ? currentOptions[0].option_name : "용량";
           const newOptions = [
             {
-              option_name: "용량", // 기존 option_name과 동일하게 유지
+              option_name: existingOptionName, // 기존 option_name과 동일하게 유지
               option_value: [
                 { option_text: option1kg },
                 { option_text: option2nd },
@@ -575,6 +578,8 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
               ]
             }
           ];
+
+          console.log(`📝 사용할 옵션명: "${existingOptionName}"`);
 
           const optionsData = {
             original_options: originalOptions,
