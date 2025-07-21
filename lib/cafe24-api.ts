@@ -367,6 +367,112 @@ class Cafe24API {
       return null;
     }
   }
+
+  // 상품 옵션 업데이트
+  async updateProductOptions(productNo: number, options: {
+    option_name: string;
+    option_value: Array<{
+      option_text: string;
+    }>;
+  }[]): Promise<any> {
+    const token = await this.getValidToken();
+    if (!token) {
+      throw new Error('인증 토큰을 가져올 수 없습니다.');
+    }
+
+    console.log(`🔧 옵션 업데이트 시작: 상품 ${productNo}`);
+    console.log(`📝 옵션 데이터:`, JSON.stringify(options, null, 2));
+
+    try {
+      const response = await axios.put(
+        `${CAFE24_BASE_URL}/admin/products/${productNo}/options`,
+        {
+          shop_no: 1,
+          request: {
+            option_list_type: "S",
+            options: options
+          }
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'X-Cafe24-Api-Version': '2025-06-01'
+          }
+        }
+      );
+
+      console.log(`✅ 옵션 업데이트 성공: 상품 ${productNo}`);
+      console.log(`📋 응답 데이터:`, response.data);
+      return response.data;
+    } catch (error) {
+      console.error(`❌ 옵션 업데이트 실패: 상품 ${productNo}`, error);
+      if (axios.isAxiosError(error)) {
+        console.error('📋 API 에러 상세:', {
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          data: error.response?.data,
+          config: {
+            url: error.config?.url,
+            method: error.config?.method,
+            data: error.config?.data
+          }
+        });
+      }
+      throw error;
+    }
+  }
+
+  // 상품 variant 업데이트
+  async updateProductVariant(productNo: number, variantCode: string, variantData: {
+    additional_amount: string;
+    display?: string;
+    selling?: string;
+  }): Promise<any> {
+    const token = await this.getValidToken();
+    if (!token) {
+      throw new Error('인증 토큰을 가져올 수 없습니다.');
+    }
+
+    console.log(`🔧 Variant 업데이트 시작: 상품 ${productNo}, Variant ${variantCode}`);
+    console.log(`📝 Variant 데이터:`, JSON.stringify(variantData, null, 2));
+
+    try {
+      const response = await axios.put(
+        `${CAFE24_BASE_URL}/admin/products/${productNo}/variants/${variantCode}`,
+        {
+          shop_no: 1,
+          request: variantData
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'X-Cafe24-Api-Version': '2025-06-01'
+          }
+        }
+      );
+
+      console.log(`✅ Variant 업데이트 성공: 상품 ${productNo}, Variant ${variantCode}`);
+      console.log(`📋 응답 데이터:`, response.data);
+      return response.data;
+    } catch (error) {
+      console.error(`❌ Variant 업데이트 실패: 상품 ${productNo}, Variant ${variantCode}`, error);
+      if (axios.isAxiosError(error)) {
+        console.error('📋 API 에러 상세:', {
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          data: error.response?.data,
+          config: {
+            url: error.config?.url,
+            method: error.config?.method,
+            data: error.config?.data
+          }
+        });
+      }
+      throw error;
+    }
+  }
 }
 
 export const cafe24API = new Cafe24API(); 
