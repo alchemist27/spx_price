@@ -224,18 +224,27 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
   };
 
   const exportToExcel = () => {
-    const ws = XLSX.utils.json_to_sheet(sortedProducts.map(product => ({
-      '상품코드': product.product_code,
-      '상품명': product.product_name,
-      '영문상품명': product.eng_product_name,
-      '판매가': product.price,
-      '공급가': product.supply_price,
-      '표시여부': product.display === 'T' ? '표시' : '숨김',
-      '판매여부': product.selling === 'T' ? '판매' : '판매안함',
-      '노출그룹': product.exposure_limit_type === 'M' ? product.exposure_group_list?.join(', ') || '없음' : '모두공개',
-      '생성일': new Date(product.created_date).toLocaleDateString('ko-KR'),
-      '수정일': new Date(product.updated_date).toLocaleDateString('ko-KR'),
-    })));
+    const ws = XLSX.utils.json_to_sheet(sortedProducts.map(product => {
+      const variantPrices = calculateVariantPrices(product);
+      
+      return {
+        '상품코드': product.product_code,
+        '상품명': product.product_name,
+        '영문상품명': product.eng_product_name,
+        '1kg가격': `₩${formatPrice(variantPrices.price1kg.toString())}`,
+        '1kg단가': `₩${formatPrice(variantPrices.unitPrice1kg.toString())}/kg`,
+        '5kg가격': variantPrices.price5kg ? `₩${formatPrice(variantPrices.price5kg.toString())}` : '-',
+        '5kg단가': variantPrices.unitPrice5kg ? `₩${formatPrice(variantPrices.unitPrice5kg.toString())}/kg` : '-',
+        '20kg가격': variantPrices.price20kg ? `₩${formatPrice(variantPrices.price20kg.toString())}` : '-',
+        '20kg단가': variantPrices.unitPrice20kg ? `₩${formatPrice(variantPrices.unitPrice20kg.toString())}/kg` : '-',
+        '공급가': product.supply_price,
+        '표시여부': product.display === 'T' ? '표시' : '숨김',
+        '판매여부': product.selling === 'T' ? '판매' : '판매안함',
+        '노출그룹': product.exposure_limit_type === 'M' ? product.exposure_group_list?.join(', ') || '없음' : '모두공개',
+        '생성일': new Date(product.created_date).toLocaleDateString('ko-KR'),
+        '수정일': new Date(product.updated_date).toLocaleDateString('ko-KR'),
+      };
+    }));
 
     const wb = XLSX.utils.book_new();
     const sheetName = activeTab === 'all' ? '전체상품' : (EXPOSURE_GROUPS[activeTab as keyof typeof EXPOSURE_GROUPS]?.name || `그룹${activeTab}`);
@@ -247,6 +256,40 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
 
   const formatPrice = (price: string) => {
     return new Intl.NumberFormat('ko-KR').format(parseFloat(price));
+  };
+
+  // variants 기반 가격 계산 함수
+  const calculateVariantPrices = (product: Cafe24Product) => {
+    const basePrice = parseFloat(product.price);
+    
+    if (!product.variants || product.variants.length === 0) {
+      return {
+        price1kg: basePrice,
+        price5kg: null,
+        price20kg: null,
+        unitPrice1kg: basePrice,
+        unitPrice5kg: null,
+        unitPrice20kg: null
+      };
+    }
+
+    // variants 배열에서 additional_amount 기준으로 정렬 (0, 84900, 398400 순서)
+    const sortedVariants = [...product.variants].sort((a, b) => 
+      parseFloat(a.additional_amount) - parseFloat(b.additional_amount)
+    );
+
+    const price1kg = basePrice; // 기본 가격 (0.00 추가금액)
+    const price5kg = sortedVariants.length > 1 ? basePrice + parseFloat(sortedVariants[1].additional_amount) : null;
+    const price20kg = sortedVariants.length > 2 ? basePrice + parseFloat(sortedVariants[2].additional_amount) : null;
+
+    return {
+      price1kg,
+      price5kg,
+      price20kg,
+      unitPrice1kg: price1kg / 1,
+      unitPrice5kg: price5kg ? price5kg / 5 : null,
+      unitPrice20kg: price20kg ? price20kg / 20 : null
+    };
   };
 
   const getSortIcon = (field: SortField) => {
@@ -372,9 +415,19 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
                   onClick={() => handleSort('price')}
                   className="flex items-center gap-1 hover:text-gray-900 font-medium text-xs text-gray-500 uppercase tracking-wider"
                 >
-                  판매가
+                  1kg 가격
                   {getSortIcon('price')}
                 </button>
+              </th>
+              <th className="table-header">
+                <span className="font-medium text-xs text-gray-500 uppercase tracking-wider">
+                  5kg 가격
+                </span>
+              </th>
+              <th className="table-header">
+                <span className="font-medium text-xs text-gray-500 uppercase tracking-wider">
+                  20kg 가격
+                </span>
               </th>
               <th className="table-header">
                 <button
@@ -417,129 +470,163 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {sortedProducts.map((product) => (
-              <tr key={product.product_no} className="hover:bg-gray-50">
-                <td className="table-cell font-medium">{product.product_code}</td>
-                <td className="table-cell">
-                  {editingProduct === product.product_no ? (
-                    <input
-                      type="text"
-                      value={editForm.product_name || ''}
-                      onChange={(e) => setEditForm({ ...editForm, product_name: e.target.value })}
-                      className="input-field"
-                    />
-                  ) : (
-                    product.product_name
-                  )}
-                </td>
-                <td className="table-cell">
-                  {editingProduct === product.product_no ? (
-                    <input
-                      type="number"
-                      value={editForm.price || ''}
-                      onChange={(e) => setEditForm({ ...editForm, price: e.target.value })}
-                      className="input-field"
-                    />
-                  ) : (
-                    formatPrice(product.price)
-                  )}
-                </td>
-                <td className="table-cell">
-                  {editingProduct === product.product_no ? (
-                    <input
-                      type="number"
-                      value={editForm.supply_price || ''}
-                      onChange={(e) => setEditForm({ ...editForm, supply_price: e.target.value })}
-                      className="input-field"
-                    />
-                  ) : (
-                    formatPrice(product.supply_price)
-                  )}
-                </td>
-                <td className="table-cell">
-                  {editingProduct === product.product_no ? (
-                    <select
-                      value={editForm.display || ''}
-                      onChange={(e) => setEditForm({ ...editForm, display: e.target.value })}
-                      className="input-field"
-                    >
-                      <option value="T">표시</option>
-                      <option value="F">숨김</option>
-                    </select>
-                  ) : (
-                    <span className={`px-2 py-1 text-xs rounded-full ${
-                      product.display === 'T' 
-                        ? 'bg-green-100 text-green-800' 
-                        : 'bg-red-100 text-red-800'
-                    }`}>
-                      {product.display === 'T' ? '표시' : '숨김'}
-                    </span>
-                  )}
-                </td>
-                <td className="table-cell">
-                  {editingProduct === product.product_no ? (
-                    <select
-                      value={editForm.selling || ''}
-                      onChange={(e) => setEditForm({ ...editForm, selling: e.target.value })}
-                      className="input-field"
-                    >
-                      <option value="T">판매</option>
-                      <option value="F">판매안함</option>
-                    </select>
-                  ) : (
-                    <span className={`px-2 py-1 text-xs rounded-full ${
-                      product.selling === 'T' 
-                        ? 'bg-green-100 text-green-800' 
-                        : 'bg-red-100 text-red-800'
-                    }`}>
-                      {product.selling === 'T' ? '판매' : '판매안함'}
-                    </span>
-                  )}
-                </td>
-                <td className="table-cell">
-                  {product.exposure_limit_type === 'M' ? (
-                    <div className="flex flex-wrap gap-1">
-                      {product.exposure_group_list?.map(groupId => (
-                        <span key={groupId} className="px-2 py-1 text-xs rounded bg-blue-100 text-blue-800">
-                          {EXPOSURE_GROUPS[groupId.toString() as keyof typeof EXPOSURE_GROUPS]?.name || `그룹${groupId}`}
-                        </span>
-                      )) || <span className="text-gray-400">없음</span>}
-                    </div>
-                  ) : (
-                    <span className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-800">모두공개</span>
-                  )}
-                </td>
-                <td className="table-cell text-sm text-gray-500">
-                  {new Date(product.updated_date).toLocaleDateString('ko-KR')}
-                </td>
-                <td className="table-cell">
-                  {editingProduct === product.product_no ? (
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleSave(product.product_no)}
-                        disabled={isLoading}
-                        className="p-1 text-green-600 hover:text-green-800 disabled:opacity-50"
+            {sortedProducts.map((product) => {
+              const variantPrices = calculateVariantPrices(product);
+              
+              return (
+                <tr key={product.product_no} className="hover:bg-gray-50">
+                  <td className="table-cell font-medium">{product.product_code}</td>
+                  <td className="table-cell">
+                    {editingProduct === product.product_no ? (
+                      <input
+                        type="text"
+                        value={editForm.product_name || ''}
+                        onChange={(e) => setEditForm({ ...editForm, product_name: e.target.value })}
+                        className="input-field"
+                      />
+                    ) : (
+                      product.product_name
+                    )}
+                  </td>
+                  
+                  {/* 1kg 가격 */}
+                  <td className="table-cell">
+                    {editingProduct === product.product_no ? (
+                      <input
+                        type="number"
+                        value={editForm.price || ''}
+                        onChange={(e) => setEditForm({ ...editForm, price: e.target.value })}
+                        className="input-field"
+                      />
+                    ) : (
+                      <div>
+                        <div className="font-medium">₩{formatPrice(variantPrices.price1kg.toString())}</div>
+                        <div className="text-xs text-gray-500">₩{formatPrice(variantPrices.unitPrice1kg.toString())}/kg</div>
+                      </div>
+                    )}
+                  </td>
+                  
+                  {/* 5kg 가격 */}
+                  <td className="table-cell">
+                    {variantPrices.price5kg ? (
+                      <div>
+                        <div className="font-medium">₩{formatPrice(variantPrices.price5kg.toString())}</div>
+                        <div className="text-xs text-gray-500">₩{formatPrice(variantPrices.unitPrice5kg!.toString())}/kg</div>
+                      </div>
+                    ) : (
+                      <span className="text-gray-400 text-sm">-</span>
+                    )}
+                  </td>
+                  
+                  {/* 20kg 가격 */}
+                  <td className="table-cell">
+                    {variantPrices.price20kg ? (
+                      <div>
+                        <div className="font-medium">₩{formatPrice(variantPrices.price20kg.toString())}</div>
+                        <div className="text-xs text-gray-500">₩{formatPrice(variantPrices.unitPrice20kg!.toString())}/kg</div>
+                      </div>
+                    ) : (
+                      <span className="text-gray-400 text-sm">-</span>
+                    )}
+                  </td>
+                  
+                  <td className="table-cell">
+                    {editingProduct === product.product_no ? (
+                      <input
+                        type="number"
+                        value={editForm.supply_price || ''}
+                        onChange={(e) => setEditForm({ ...editForm, supply_price: e.target.value })}
+                        className="input-field"
+                      />
+                    ) : (
+                      formatPrice(product.supply_price)
+                    )}
+                  </td>
+                  <td className="table-cell">
+                    {editingProduct === product.product_no ? (
+                      <select
+                        value={editForm.display || ''}
+                        onChange={(e) => setEditForm({ ...editForm, display: e.target.value })}
+                        className="input-field"
                       >
-                        <Save className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={handleCancel}
-                        className="p-1 text-red-600 hover:text-red-800"
+                        <option value="T">표시</option>
+                        <option value="F">숨김</option>
+                      </select>
+                    ) : (
+                      <span className={`px-2 py-1 text-xs rounded-full ${
+                        product.display === 'T' 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-red-100 text-red-800'
+                      }`}>
+                        {product.display === 'T' ? '표시' : '숨김'}
+                      </span>
+                    )}
+                  </td>
+                  <td className="table-cell">
+                    {editingProduct === product.product_no ? (
+                      <select
+                        value={editForm.selling || ''}
+                        onChange={(e) => setEditForm({ ...editForm, selling: e.target.value })}
+                        className="input-field"
                       >
-                        <X className="h-4 w-4" />
+                        <option value="T">판매</option>
+                        <option value="F">판매안함</option>
+                      </select>
+                    ) : (
+                      <span className={`px-2 py-1 text-xs rounded-full ${
+                        product.selling === 'T' 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-red-100 text-red-800'
+                      }`}>
+                        {product.selling === 'T' ? '판매' : '판매안함'}
+                      </span>
+                    )}
+                  </td>
+                  <td className="table-cell">
+                    {product.exposure_limit_type === 'M' ? (
+                      <div className="flex flex-wrap gap-1">
+                        {product.exposure_group_list?.map(groupId => (
+                          <span key={groupId} className="px-2 py-1 text-xs rounded bg-blue-100 text-blue-800">
+                            {EXPOSURE_GROUPS[groupId.toString() as keyof typeof EXPOSURE_GROUPS]?.name || `그룹${groupId}`}
+                          </span>
+                        )) || <span className="text-gray-400">없음</span>}
+                      </div>
+                    ) : (
+                      <span className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-800">모두공개</span>
+                    )}
+                  </td>
+                  <td className="table-cell text-sm text-gray-500">
+                    {new Date(product.updated_date).toLocaleDateString('ko-KR')}
+                  </td>
+                  <td className="table-cell">
+                    {editingProduct === product.product_no ? (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleSave(product.product_no)}
+                          disabled={isLoading}
+                          className="p-1 text-green-600 hover:text-green-800 disabled:opacity-50"
+                        >
+                          <Save className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={handleCancel}
+                          className="p-1 text-red-600 hover:text-red-800"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => handleEdit(product)}
+                        className="p-1 text-blue-600 hover:text-blue-800"
+                      >
+                        <Edit className="h-4 w-4" />
                       </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => handleEdit(product)}
-                      className="p-1 text-blue-600 hover:text-blue-800"
-                    >
-                      <Edit className="h-4 w-4" />
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

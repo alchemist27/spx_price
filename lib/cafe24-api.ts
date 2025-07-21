@@ -38,6 +38,22 @@ export interface Cafe24Product {
   clearance_category_code: string | null;
   exposure_limit_type: string;
   exposure_group_list: number[];
+  variants?: Array<{
+    additional_amount: string;
+    custom_variant_code: string;
+    display: string;
+    display_soldout: string;
+    image: string;
+    important_inventory: string;
+    inventory_control_type: string;
+    options: Array<any>;
+    quantity: number;
+    safety_inventory: number;
+    selling: string;
+    shop_no: number;
+    use_inventory: string;
+    variant_code: string;
+  }>;
 }
 
 export interface Cafe24ProductUpdateRequest {

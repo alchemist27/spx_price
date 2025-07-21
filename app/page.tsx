@@ -8,6 +8,7 @@ import LoginForm from '@/components/LoginForm';
 import ProductTable from '@/components/ProductTable';
 import toast from 'react-hot-toast';
 import { LogOut, RefreshCw } from 'lucide-react';
+import axios from 'axios'; // Added axios import
 
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -78,9 +79,37 @@ export default function Home() {
     setIsLoadingProducts(true);
     try {
       console.log('📦 상품 목록 로딩 시작...');
-      const productsData = await cafe24API.getProducts();
-      setProducts(productsData);
-      console.log(`✅ 총 ${productsData.length}개 상품 로딩 완료`);
+      
+      // variants 정보를 포함해서 상품 조회
+      const allProducts: Cafe24Product[] = [];
+      const limit = 100;
+      let offset = 0;
+      let hasMore = true;
+      
+      while (hasMore) {
+        console.log(`📄 페이지 ${Math.floor(offset / limit) + 1} 조회 중... (offset: ${offset}, limit: ${limit})`);
+        
+        const response = await axios.get(`/api/products?limit=${limit}&offset=${offset}&embed=variants`);
+        const products = response.data.products || [];
+        
+        console.log(`✅ ${products.length}개 상품 조회 완료 (variants 포함)`);
+        
+        if (products.length > 0) {
+          allProducts.push(...products);
+          offset += limit;
+          hasMore = products.length === limit;
+          
+          if (hasMore) {
+            console.log('⏳ 다음 페이지 호출 전 200ms 대기...');
+            await new Promise(resolve => setTimeout(resolve, 200));
+          }
+        } else {
+          hasMore = false;
+        }
+      }
+      
+      setProducts(allProducts);
+      console.log(`✅ 총 ${allProducts.length}개 상품 로딩 완료 (variants 포함)`);
     } catch (error) {
       console.error('Failed to load products:', error);
       toast.error('상품 목록을 불러오는데 실패했습니다.');
