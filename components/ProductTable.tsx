@@ -104,10 +104,10 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
         const secondUnit = isSpecialProduct ? 4 : 5;
         const thirdUnit = isSpecialProduct ? 15 : 20;
         
-        // 현재 옵션명 형태로 표시
-        const option1kg = `1kg(${formatPrice(variantPrices.unitPrice1kg.toString())}원/kg)`;
-        const option2nd = `${secondUnit}kg(${formatPrice(variantPrices.unitPrice2nd?.toString() || '0')}원/kg)`;
-        const option3rd = `${thirdUnit}kg(${formatPrice(variantPrices.unitPrice3rd?.toString() || '0')}원/kg)`;
+        // 현재 옵션명 형태로 표시 (실제 카페24 형식: '1kg(21600원)')
+        const option1kg = `1kg(${Math.round(variantPrices.unitPrice1kg)}원)`;
+        const option2nd = `${secondUnit}kg(${Math.round(variantPrices.unitPrice2nd || 0)}원)`;
+        const option3rd = `${thirdUnit}kg(${Math.round(variantPrices.unitPrice3rd || 0)}원)`;
         
         console.log(`   📝 현재 옵션명 1: "${option1kg}"`);
         console.log(`   📝 현재 옵션명 2: "${option2nd}"`);
@@ -285,9 +285,9 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
                 const secondUnit = isSpecialProduct ? 4 : 5;
                 const thirdUnit = isSpecialProduct ? 15 : 20;
                 
-                const option1kg = `1kg(${formatPrice(formData.price_1kg)}원/kg)`;
-                const option2nd = `${secondUnit}kg(${formatPrice(formData.unit_price_2nd)}원/kg)`;
-                const option3rd = `${thirdUnit}kg(${formatPrice(formData.unit_price_3rd)}원/kg)`;
+                const option1kg = `1kg(${Math.round(parseFloat(formData.price_1kg))}원)`;
+                const option2nd = `${secondUnit}kg(${Math.round(parseFloat(formData.unit_price_2nd))}원)`;
+                const option3rd = `${thirdUnit}kg(${Math.round(parseFloat(formData.unit_price_3rd))}원)`;
                 
                 console.log(`📦 ${product.product_code}: "${option1kg}", "${option2nd}", "${option3rd}"`);
               }
@@ -377,9 +377,9 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
         
         // 🧪 옵션명 생성 미리보기 (첫 2개 상품만)
         if (sortedProducts.indexOf(product) < 2) {
-          const option1kg = `1kg(${formatPrice(supplyPrice.toString())}원/kg)`;
-          const option2nd = `${secondUnit}kg(${formatPrice(unitPrice2nd.toString())}원/kg)`;
-          const option3rd = `${thirdUnit}kg(${formatPrice(unitPrice3rd.toString())}원/kg)`;
+                          const option1kg = `1kg(${Math.round(supplyPrice)}원)`;
+                const option2nd = `${secondUnit}kg(${Math.round(unitPrice2nd)}원)`;
+                const option3rd = `${thirdUnit}kg(${Math.round(unitPrice3rd)}원)`;
           
           console.log(`🧪 ${product.product_code} 예상 옵션명:`);
           console.log(`   "${option1kg}"`);
@@ -490,10 +490,24 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
     let successCount = 0;
     let errorCount = 0;
 
+    // 🔒 테스트 안전장치: P0000BOI 상품만 허용
+    const TEST_PRODUCT_CODE = 'P0000BOI';
+    const allowedProducts = sortedProducts.filter(product => product.product_code === TEST_PRODUCT_CODE);
+    
+    if (allowedProducts.length === 0) {
+      toast.error(`테스트 상품 ${TEST_PRODUCT_CODE}이 현재 목록에 없습니다.`);
+      setIsLoading(false);
+      return;
+    }
+
+    console.log(`🔒 테스트 모드: ${TEST_PRODUCT_CODE} 상품만 업데이트 (총 ${allowedProducts.length}개)`);
+
     try {
-      for (const product of sortedProducts) {
+      for (const product of allowedProducts) {
         const formData = priceEditForms[product.product_no];
         if (!formData) continue;
+
+        console.log(`\n🚀 === ${product.product_code} 업데이트 시작 ===`);
 
         try {
           // 가격 데이터 정리 (쉼표 제거, 소수점 형식 보장)
@@ -502,46 +516,99 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
           const cleanAdditionalAmount2nd = sanitizePrice(formData.additional_amount_2nd);
           const cleanAdditionalAmount3rd = sanitizePrice(formData.additional_amount_3rd);
 
-          console.log(`💾 상품 ${product.product_code} 저장 데이터:`, {
-            price: cleanPrice1kg,
-            supply_price: cleanSupplyPrice,
-            additional_2nd: cleanAdditionalAmount2nd,
-            additional_3rd: cleanAdditionalAmount3rd
-          });
-
-          // 🧪 저장될 옵션명 미리보기 (첫 2개 상품만)
-          if (sortedProducts.indexOf(product) < 2) {
-            const specialProductCodes = ['P00000PN', 'P0000BIB', 'P0000BHX', 'P0000BHW', 'P0000BHV', 'P00000YR'];
-            const isSpecialProduct = specialProductCodes.includes(product.product_code);
-            const secondUnit = isSpecialProduct ? 4 : 5;
-            const thirdUnit = isSpecialProduct ? 15 : 20;
-            
-            const price1kg = parseFloat(cleanPrice1kg);
-            const unitPrice2nd = parseFloat(formData.unit_price_2nd.replace(/,/g, '')) || price1kg;
-            const unitPrice3rd = parseFloat(formData.unit_price_3rd.replace(/,/g, '')) || price1kg;
-            
-            const futureOption1kg = `1kg(${formatPrice(price1kg.toString())}원/kg)`;
-            const futureOption2nd = `${secondUnit}kg(${formatPrice(unitPrice2nd.toString())}원/kg)`;
-            const futureOption3rd = `${thirdUnit}kg(${formatPrice(unitPrice3rd.toString())}원/kg)`;
-            
-            console.log(`🧪 ${product.product_code} 저장될 옵션명:`);
-            console.log(`   "${futureOption1kg}"`);
-            console.log(`   "${futureOption2nd}"`);
-            console.log(`   "${futureOption3rd}"`);
-          }
-
-          // 기본 가격과 공급가 업데이트
-          await cafe24API.updateProduct(product.product_no, {
+          console.log(`💾 1단계 - 기본가격/공급가 업데이트:`, {
             price: cleanPrice1kg,
             supply_price: cleanSupplyPrice
           });
 
-          // TODO: 5) 저장 시 옵션명, variant 업데이트는 다음 단계에서 구현
-          // 현재는 기본 가격과 공급가만 업데이트
+          // 특정 상품코드들은 1kg, 4kg, 15kg 단위 사용
+          const specialProductCodes = ['P00000PN', 'P0000BIB', 'P0000BHX', 'P0000BHW', 'P0000BHV', 'P00000YR'];
+          const isSpecialProduct = specialProductCodes.includes(product.product_code);
+          const secondUnit = isSpecialProduct ? 4 : 5;
+          const thirdUnit = isSpecialProduct ? 15 : 20;
+          
+          const price1kg = parseFloat(cleanPrice1kg);
+          const unitPrice2nd = parseFloat(formData.unit_price_2nd.replace(/,/g, '')) || price1kg;
+          const unitPrice3rd = parseFloat(formData.unit_price_3rd.replace(/,/g, '')) || price1kg;
+          
+          const option1kg = `1kg(${Math.round(price1kg)}원)`;
+          const option2nd = `${secondUnit}kg(${Math.round(unitPrice2nd)}원)`;
+          const option3rd = `${thirdUnit}kg(${Math.round(unitPrice3rd)}원)`;
 
+          // 🔥 5-1) 기본 가격과 공급가 업데이트
+          console.log(`📡 API 호출 1: 기본가격/공급가 업데이트`);
+          await cafe24API.updateProduct(product.product_no, {
+            price: cleanPrice1kg,
+            supply_price: cleanSupplyPrice
+          });
+          console.log(`✅ 1단계 완료: 기본가격/공급가 업데이트 성공`);
+
+          // 🔥 5-2) 옵션명 업데이트
+          console.log(`💾 2단계 - 옵션명 업데이트:`, {
+            option1kg,
+            option2nd,
+            option3rd
+          });
+
+          const optionsData = [
+            {
+              option_name: "용량",
+              option_value: [
+                { option_text: option1kg },
+                { option_text: option2nd },
+                { option_text: option3rd }
+              ]
+            }
+          ];
+
+          console.log(`📡 API 호출 2: 옵션명 업데이트`);
+          await cafe24API.updateProductOptions(product.product_no, optionsData);
+          console.log(`✅ 2단계 완료: 옵션명 업데이트 성공`);
+
+          // 🔥 5-3) Variant 추가금액 업데이트
+          if (product.variants && product.variants.length >= 2) {
+            // variants를 additional_amount 기준으로 정렬
+            const sortedVariants = [...product.variants].sort((a, b) => 
+              parseFloat(a.additional_amount) - parseFloat(b.additional_amount)
+            );
+
+            // 2차 variant (5kg 또는 4kg) 업데이트
+            if (sortedVariants.length > 1) {
+              const variant2nd = sortedVariants[1];
+              console.log(`💾 3단계 - 2차 Variant 업데이트:`, {
+                variantCode: variant2nd.variant_code,
+                additional_amount: cleanAdditionalAmount2nd
+              });
+
+              console.log(`📡 API 호출 3: 2차 Variant 업데이트`);
+              await cafe24API.updateProductVariant(product.product_no, variant2nd.variant_code, {
+                additional_amount: cleanAdditionalAmount2nd
+              });
+              console.log(`✅ 3단계 완료: 2차 Variant 업데이트 성공`);
+            }
+
+            // 3차 variant (20kg 또는 15kg) 업데이트
+            if (sortedVariants.length > 2) {
+              const variant3rd = sortedVariants[2];
+              console.log(`💾 4단계 - 3차 Variant 업데이트:`, {
+                variantCode: variant3rd.variant_code,
+                additional_amount: cleanAdditionalAmount3rd
+              });
+
+              console.log(`📡 API 호출 4: 3차 Variant 업데이트`);
+              await cafe24API.updateProductVariant(product.product_no, variant3rd.variant_code, {
+                additional_amount: cleanAdditionalAmount3rd
+              });
+              console.log(`✅ 4단계 완료: 3차 Variant 업데이트 성공`);
+            }
+          } else {
+            console.warn(`⚠️ ${product.product_code}: variants 데이터가 부족합니다.`);
+          }
+
+          console.log(`🎉 === ${product.product_code} 전체 업데이트 완료 ===\n`);
           successCount++;
         } catch (error) {
-          console.error(`상품 ${product.product_code} 업데이트 실패:`, error);
+          console.error(`❌ ${product.product_code} 업데이트 실패:`, error);
           errorCount++;
         }
       }
@@ -556,6 +623,7 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
         onProductsUpdate();
       }
     } catch (error) {
+      console.error('전체 가격 업데이트 중 오류:', error);
       toast.error('가격 업데이트 중 오류가 발생했습니다.');
     } finally {
       setIsLoading(false);
@@ -808,7 +876,7 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
                   {getSortIcon('product_name')}
                 </button>
               </th>
-              <th className="table-header">
+              <th className="table-header w-32">
                 <button
                   onClick={() => handleSort('supply_price')}
                   className="flex items-center gap-1 hover:text-gray-900 font-medium text-xs text-gray-500 uppercase tracking-wider"
@@ -817,7 +885,7 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
                   {getSortIcon('supply_price')}
                 </button>
               </th>
-              <th className="table-header">
+              <th className="table-header w-36">
                 <button
                   onClick={() => handleSort('price')}
                   className="flex items-center gap-1 hover:text-gray-900 font-medium text-xs text-gray-500 uppercase tracking-wider"
@@ -826,12 +894,12 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
                   {getSortIcon('price')}
                 </button>
               </th>
-              <th className="table-header">
+              <th className="table-header w-36">
                 <span className="font-medium text-xs text-gray-500 uppercase tracking-wider">
                   2차 가격
                 </span>
               </th>
-              <th className="table-header">
+              <th className="table-header w-36">
                 <span className="font-medium text-xs text-gray-500 uppercase tracking-wider">
                   3차 가격
                 </span>
@@ -869,15 +937,15 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
                   </td>
                   
                   {/* 공급가 */}
-                  <td className="table-cell">
+                  <td className="table-cell w-32">
                     {isPriceEditMode ? (
                       priceEditForms[product.product_no] ? (
                         <input
                           type="number"
                           value={priceEditForms[product.product_no].supply_price}
                           onChange={(e) => updatePriceForm(product.product_no, 'supply_price', e.target.value)}
-                          className="input-field bg-yellow-50 border-yellow-200"
-                          placeholder="공급가 (편집가능)"
+                          className="input-field bg-yellow-50 border-yellow-200 w-full min-w-24 px-2 py-1 text-sm"
+                          placeholder="공급가"
                         />
                       ) : (
                         <div className="bg-red-50 border border-red-200 rounded p-2">
@@ -899,7 +967,7 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
                   </td>
                   
                   {/* 1kg 가격 (공급가 기반) */}
-                  <td className="table-cell">
+                  <td className="table-cell w-36">
                     {isPriceEditMode ? (
                       priceEditForms[product.product_no] ? (
                         <div>
@@ -913,7 +981,7 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
                           {/* 옵션명 미리보기 */}
                           <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded text-xs">
                             <div className="text-green-600 font-mono break-words">
-                              "1kg({formatPrice(priceEditForms[product.product_no].price_1kg)}원/kg)"
+                              "1kg({Math.round(parseFloat(priceEditForms[product.product_no].price_1kg))}원)"
                             </div>
                           </div>
                         </div>
@@ -940,7 +1008,7 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
                   </td>
                   
                   {/* 2차 가격 (5kg 또는 4kg) */}
-                  <td className="table-cell">
+                  <td className="table-cell w-36">
                     {isPriceEditMode ? (
                       priceEditForms[product.product_no] ? (
                         <div>
@@ -949,7 +1017,7 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
                             type="number"
                             value={priceEditForms[product.product_no].unit_price_2nd}
                             onChange={(e) => updatePriceForm(product.product_no, 'unit_price_2nd', e.target.value)}
-                            className="input-field text-sm mb-1"
+                            className="input-field bg-yellow-50 border-yellow-200 w-full min-w-24 px-2 py-1 text-sm mb-1"
                             placeholder="1kg당 단가"
                           />
                           <div className="text-xs text-green-600 font-medium">
@@ -961,7 +1029,7 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
                           {/* 옵션명 미리보기 */}
                           <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded text-xs">
                             <div className="text-green-600 font-mono break-words">
-                              "{variantPrices.units.second}({formatPrice(priceEditForms[product.product_no].unit_price_2nd)}원/kg)"
+                              "{variantPrices.units.second}({Math.round(parseFloat(priceEditForms[product.product_no].unit_price_2nd))}원)"
                             </div>
                           </div>
                         </div>
@@ -983,7 +1051,7 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
                   </td>
                   
                   {/* 3차 가격 (20kg 또는 15kg) */}
-                  <td className="table-cell">
+                  <td className="table-cell w-36">
                     {isPriceEditMode ? (
                       priceEditForms[product.product_no] ? (
                         <div>
@@ -992,7 +1060,7 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
                             type="number"
                             value={priceEditForms[product.product_no].unit_price_3rd}
                             onChange={(e) => updatePriceForm(product.product_no, 'unit_price_3rd', e.target.value)}
-                            className="input-field text-sm mb-1"
+                            className="input-field bg-yellow-50 border-yellow-200 w-full min-w-24 px-2 py-1 text-sm mb-1"
                             placeholder="1kg당 단가"
                           />
                           <div className="text-xs text-green-600 font-medium">
@@ -1004,7 +1072,7 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
                           {/* 옵션명 미리보기 */}
                           <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded text-xs">
                             <div className="text-green-600 font-mono break-words">
-                              "{variantPrices.units.third}({formatPrice(priceEditForms[product.product_no].unit_price_3rd)}원/kg)"
+                              "{variantPrices.units.third}({Math.round(parseFloat(priceEditForms[product.product_no].unit_price_3rd))}원)"
                             </div>
                           </div>
                         </div>
