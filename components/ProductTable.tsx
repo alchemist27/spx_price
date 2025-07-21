@@ -543,16 +543,31 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
           });
           console.log(`✅ 1단계 완료: 기본가격/공급가 업데이트 성공`);
 
-          // 🔥 5-2) 옵션명 업데이트
-          console.log(`💾 2단계 - 옵션명 업데이트:`, {
+          // 🔥 5-2) 기존 옵션 정보 조회 후 옵션명 업데이트
+          console.log(`💾 2단계 - 기존 옵션 조회 및 옵션명 업데이트:`, {
             option1kg,
             option2nd,
             option3rd
           });
 
-          const optionsData = [
+          console.log(`📡 API 호출 2-1: 기존 옵션 정보 조회`);
+          const productDetail = await cafe24API.getProductDetail(product.product_no);
+          const currentOptions = productDetail.product?.options || [];
+          
+          console.log(`🔍 현재 옵션 구조:`, currentOptions);
+
+          // original_options 구성 (기존 옵션 구조)
+          const originalOptions = currentOptions.map((option: any) => ({
+            option_name: option.option_name,
+            option_value: option.option_value.map((value: any) => ({
+              option_text: value.option_text
+            }))
+          }));
+
+          // 새로운 옵션 구조
+          const newOptions = [
             {
-              option_name: "용량",
+              option_name: "용량", // 기존 option_name과 동일하게 유지
               option_value: [
                 { option_text: option1kg },
                 { option_text: option2nd },
@@ -561,7 +576,15 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
             }
           ];
 
-          console.log(`📡 API 호출 2: 옵션명 업데이트`);
+          const optionsData = {
+            original_options: originalOptions,
+            options: newOptions
+          };
+
+          console.log(`📡 API 호출 2-2: 옵션명 업데이트 (original_options 포함)`);
+          console.log(`📝 original_options:`, JSON.stringify(originalOptions, null, 2));
+          console.log(`📝 new options:`, JSON.stringify(newOptions, null, 2));
+          
           await cafe24API.updateProductOptions(product.product_no, optionsData);
           console.log(`✅ 2단계 완료: 옵션명 업데이트 성공`);
 

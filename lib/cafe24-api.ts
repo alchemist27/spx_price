@@ -296,6 +296,23 @@ class Cafe24API {
     }
   }
 
+  // 상품 상세 정보 조회 (옵션 포함)
+  async getProductDetail(productNo: number): Promise<any> {
+    try {
+      console.log(`🔍 상품 상세 정보 조회: 상품 ${productNo} (옵션 포함)`);
+      
+      const response = await axios.get(`/api/products/${productNo}?embed=options`);
+      
+      console.log(`✅ 상품 상세 정보 조회 성공: 상품 ${productNo}`);
+      console.log(`📋 옵션 정보:`, response.data.product?.options || '없음');
+      
+      return response.data;
+    } catch (error) {
+      console.error(`❌ 상품 상세 정보 조회 실패: 상품 ${productNo}`, error);
+      throw error;
+    }
+  }
+
   getAuthUrl(): string {
     const params = new URLSearchParams({
       response_type: 'code',
@@ -369,19 +386,27 @@ class Cafe24API {
   }
 
   // 상품 옵션 업데이트
-  async updateProductOptions(productNo: number, options: {
-    option_name: string;
-    option_value: Array<{
-      option_text: string;
+  async updateProductOptions(productNo: number, optionsData: {
+    original_options?: Array<{
+      option_name: string;
+      option_value: Array<{
+        option_text: string;
+      }>;
     }>;
-  }[]): Promise<any> {
+    options: Array<{
+      option_name: string;
+      option_value: Array<{
+        option_text: string;
+      }>;
+    }>;
+  }): Promise<any> {
     console.log(`🔧 옵션 업데이트 시작: 상품 ${productNo} (API 라우터 사용)`);
-    console.log(`📝 옵션 데이터:`, JSON.stringify(options, null, 2));
+    console.log(`📝 옵션 데이터:`, JSON.stringify(optionsData, null, 2));
 
     try {
       const response = await axios.put(
         `/api/products/${productNo}/options`,
-        { options }
+        optionsData
       );
 
       console.log(`✅ 옵션 업데이트 성공: 상품 ${productNo}`);

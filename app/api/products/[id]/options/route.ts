@@ -79,15 +79,24 @@ export async function PUT(
     console.log('✅ 유효한 토큰으로 카페24 옵션 API 호출');
     
     // 카페24 API 호출
+    const requestData: any = {
+      shop_no: 1,
+      request: {
+        option_list_type: "S",
+        options: optionsData.options
+      }
+    };
+
+    // original_options가 있으면 추가
+    if (optionsData.original_options) {
+      requestData.request.original_options = optionsData.original_options;
+    }
+
+    console.log('📡 카페24 API 요청 데이터:', JSON.stringify(requestData, null, 2));
+
     const response = await axios.put(
       `${CAFE24_BASE_URL}/admin/products/${productId}/options`,
-      {
-        shop_no: 1,
-        request: {
-          option_list_type: "S",
-          options: optionsData.options
-        }
-      },
+      requestData,
       {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
