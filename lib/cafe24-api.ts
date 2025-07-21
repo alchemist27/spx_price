@@ -214,6 +214,50 @@ class Cafe24API {
     }
   }
 
+  // 🧪 variants embed 테스트 함수 (콘솔에서 실행용)
+  async testProductsWithVariants(): Promise<any> {
+    try {
+      console.log('🧪 === Variants Embed 테스트 시작 ===');
+      
+      // 2개 상품만 조회하고 variants를 embed로 포함
+      const response = await axios.get('/api/products?limit=2&embed=variants');
+      
+      console.log('✅ Variants 포함 상품 조회 성공:', {
+        productCount: response.data.products?.length || 0,
+        hasVariants: response.data.products?.some((p: any) => p.variants) || false
+      });
+      
+      // 상품별 variants 정보 출력
+      response.data.products?.forEach((product: any, index: number) => {
+        console.log(`📦 상품 ${index + 1}:`, {
+          product_no: product.product_no,
+          product_name: product.product_name.substring(0, 30) + '...',
+          variants_count: product.variants?.length || 0,
+          variants: product.variants || '없음'
+        });
+        
+        // variants가 있다면 상세 정보 출력
+        if (product.variants && product.variants.length > 0) {
+          console.log(`🔍 ${product.product_name} 의 Variants:`, product.variants);
+        }
+      });
+      
+      console.log('🧪 === Variants Embed 테스트 완료 ===');
+      return response.data;
+      
+    } catch (error) {
+      console.error('❌ Variants 테스트 실패:', error);
+      if (axios.isAxiosError(error)) {
+        console.error('API 에러 상세:', {
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          data: error.response?.data
+        });
+      }
+      throw error;
+    }
+  }
+
   async updateProduct(productNo: number, updateData: Cafe24ProductUpdateRequest): Promise<any> {
     try {
       console.log('🔄 상품 업데이트 시작 (API 라우터 사용):', { productNo });

@@ -60,8 +60,9 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const limit = Math.min(parseInt(searchParams.get('limit') || '100'), 100); // 최대 100개
     const offset = parseInt(searchParams.get('offset') || '0');
+    const embed = searchParams.get('embed'); // embed 파라미터 추가
     
-    console.log('📋 페이지네이션 파라미터:', { limit, offset });
+    console.log('📋 페이지네이션 파라미터:', { limit, offset, embed });
     
     // 유효한 토큰 확인 (만료 시 자동 갱신)
     const accessToken = await getValidToken();
@@ -75,8 +76,13 @@ export async function GET(request: NextRequest) {
 
     console.log('✅ 유효한 토큰으로 카페24 API 호출');
     
-    // 카페24 API 호출 (limit, offset 포함)
-    const apiUrl = `${CAFE24_BASE_URL}/admin/products?limit=${limit}&offset=${offset}`;
+    // 카페24 API 호출 URL 구성
+    let apiUrl = `${CAFE24_BASE_URL}/admin/products?limit=${limit}&offset=${offset}`;
+    if (embed) {
+      apiUrl += `&embed=${embed}`;
+      console.log('🧪 Embed 파라미터 추가:', embed);
+    }
+    
     console.log('🔗 API URL:', apiUrl);
     
     const response = await axios.get(apiUrl, {
@@ -90,8 +96,10 @@ export async function GET(request: NextRequest) {
     console.log('✅ 카페24 API 응답 성공:', {
       status: response.status,
       productCount: response.data.products?.length || 0,
+      hasVariants: embed === 'variants' ? response.data.products?.some((p: any) => p.variants) : 'N/A',
       limit,
-      offset
+      offset,
+      embed
     });
 
     return NextResponse.json(response.data);

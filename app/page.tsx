@@ -20,6 +20,21 @@ export default function Home() {
     // Firestore 쓰기 테스트
     testFirestoreWrite();
     checkAuthStatus();
+    
+    // 🧪 개발자 도구에서 테스트 함수 사용 가능하도록 설정
+    if (typeof window !== 'undefined') {
+      (window as any).testVariants = async () => {
+        try {
+          const result = await cafe24API.testProductsWithVariants();
+          console.log('🧪 테스트 결과:', result);
+          return result;
+        } catch (error) {
+          console.error('🧪 테스트 에러:', error);
+          return null;
+        }
+      };
+      console.log('🔧 개발자 도구에서 testVariants() 함수를 사용할 수 있습니다.');
+    }
   }, []);
 
   useEffect(() => {
@@ -102,15 +117,19 @@ export default function Home() {
       <header className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
-            <div>
+            <div className="flex-1">
               <h1 className="text-2xl font-bold text-gray-900">
-                Cafe24 상품 관리자
+               소펙스코리아 쇼핑몰 상품 관리 시스템
               </h1>
-              <p className="text-sm text-gray-600">
-                소펙스코리아 쇼핑몰 상품 관리 시스템
-              </p>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex-1 flex justify-center">
+              <img 
+                src="/images/SOPEX Korea - Logo_vert.png" 
+                alt="SOPEX Korea Logo" 
+                className="h-16 w-auto"
+              />
+            </div>
+            <div className="flex-1 flex items-center justify-end gap-4">
               <button
                 onClick={loadProducts}
                 disabled={isLoadingProducts}
