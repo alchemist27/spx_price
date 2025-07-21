@@ -4,9 +4,8 @@ import { useState, useMemo } from 'react';
 import { Cafe24Product, Cafe24ProductUpdateRequest } from '@/lib/cafe24-api';
 import { cafe24API } from '@/lib/cafe24-api';
 import toast from 'react-hot-toast';
-import { Search, Filter, Download, Upload, Edit, Save, X, ChevronUp, ChevronDown } from 'lucide-react';
-import * as XLSX from 'xlsx';
-import { saveAs } from 'file-saver';
+import { Search, Edit, Save, X, ChevronUp, ChevronDown } from 'lucide-react';
+
 import React from 'react'; // Added missing import
 
 interface ProductTableProps {
@@ -30,7 +29,6 @@ type SortDirection = 'asc' | 'desc';
 
 export default function ProductTable({ products, onProductsUpdate }: ProductTableProps) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterDisplay, setFilterDisplay] = useState('all');
   const [activeTab, setActiveTab] = useState('all');
   const [editingProduct, setEditingProduct] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<Cafe24ProductUpdateRequest>({});
@@ -89,6 +87,54 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
       }));
       console.log('📝 상품 샘플:', samples);
       
+      // 🧪 상품 2개 옵션명 디버깅
+      console.log('\n🧪 === 상품 옵션명 디버깅 (상위 2개 상품) ===');
+      const testProducts = products.slice(0, 2);
+      
+      testProducts.forEach((product, index) => {
+        console.log(`\n📦 상품 ${index + 1}: ${product.product_code} - ${product.product_name}`);
+        console.log(`   공급가: ₩${formatPrice(product.supply_price)}`);
+        
+        // variant 기반 가격 계산
+        const variantPrices = calculateVariantPrices(product);
+        
+        // 특정 상품코드들은 1kg, 4kg, 15kg 단위 사용
+        const specialProductCodes = ['P00000PN', 'P0000BIB', 'P0000BHX', 'P0000BHW', 'P0000BHV', 'P00000YR'];
+        const isSpecialProduct = specialProductCodes.includes(product.product_code);
+        const secondUnit = isSpecialProduct ? 4 : 5;
+        const thirdUnit = isSpecialProduct ? 15 : 20;
+        
+        // 현재 옵션명 형태로 표시
+        const option1kg = `1kg(${formatPrice(variantPrices.unitPrice1kg.toString())}원/kg)`;
+        const option2nd = `${secondUnit}kg(${formatPrice(variantPrices.unitPrice2nd?.toString() || '0')}원/kg)`;
+        const option3rd = `${thirdUnit}kg(${formatPrice(variantPrices.unitPrice3rd?.toString() || '0')}원/kg)`;
+        
+        console.log(`   📝 현재 옵션명 1: "${option1kg}"`);
+        console.log(`   📝 현재 옵션명 2: "${option2nd}"`);
+        console.log(`   📝 현재 옵션명 3: "${option3rd}"`);
+        
+        // 가격 세부 정보
+        console.log(`   💰 가격 세부:`);
+        console.log(`      - 1kg: ₩${formatPrice(variantPrices.price1kg.toString())} (₩${formatPrice(variantPrices.unitPrice1kg.toString())}/kg)`);
+        if (variantPrices.price2nd) {
+          console.log(`      - ${secondUnit}kg: ₩${formatPrice(variantPrices.price2nd.toString())} (₩${formatPrice(variantPrices.unitPrice2nd!.toString())}/kg)`);
+        }
+        if (variantPrices.price3rd) {
+          console.log(`      - ${thirdUnit}kg: ₩${formatPrice(variantPrices.price3rd.toString())} (₩${formatPrice(variantPrices.unitPrice3rd!.toString())}/kg)`);
+        }
+        
+        // variant 정보
+        if (product.variants && product.variants.length > 0) {
+          console.log(`   🔧 Variants 정보:`);
+          product.variants.forEach((variant, vIndex) => {
+            console.log(`      - Variant ${vIndex + 1}: code=${variant.variant_code}, additional=${variant.additional_amount}`);
+          });
+        } else {
+          console.log(`   🔧 Variants: 없음`);
+        }
+      });
+      
+      console.log('\n🧪 === 옵션명 디버깅 끝 ===');
       console.log('🔍 === 디버깅 정보 끝 ===');
     }
   }, [products]);
@@ -141,22 +187,17 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
     }
   }, [products, activeTab]);
 
-  // 검색 및 필터 적용
+  // 검색 적용 (표시/판매 필터 제거)
   const filteredProducts = useMemo(() => {
     return tabFilteredProducts.filter(product => {
       const matchesSearch = 
         product.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         product.product_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
         product.model_name.toLowerCase().includes(searchTerm.toLowerCase());
-      
-      const matchesFilter = 
-        filterDisplay === 'all' || 
-        (filterDisplay === 'display' && product.display === 'T') ||
-        (filterDisplay === 'selling' && product.selling === 'T');
 
-      return matchesSearch && matchesFilter;
+      return matchesSearch;
     });
-  }, [tabFilteredProducts, searchTerm, filterDisplay]);
+  }, [tabFilteredProducts, searchTerm]);
 
   // 정렬 적용
   const sortedProducts = useMemo(() => {
@@ -191,6 +232,80 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
 
     return sorted;
   }, [filteredProducts, sortField, sortDirection]);
+
+  // 편집 모드에서 탭 변경 시 새로운 상품들의 폼 데이터 추가
+  React.useEffect(() => {
+    if (isPriceEditMode && sortedProducts.length > 0) {
+      setPriceEditForms(prev => {
+        const newForms = { ...prev };
+        let hasNewProducts = false;
+        
+        sortedProducts.forEach(product => {
+          if (!newForms[product.product_no]) {
+            hasNewProducts = true;
+            const variantPrices = calculateVariantPrices(product);
+            const supplyPrice = parseFloat(product.supply_price);
+            
+            // 특정 상품코드들은 1kg, 4kg, 15kg 단위 사용
+            const specialProductCodes = ['P00000PN', 'P0000BIB', 'P0000BHX', 'P0000BHW', 'P0000BHV', 'P00000YR'];
+            const isSpecialProduct = specialProductCodes.includes(product.product_code);
+            const secondUnit = isSpecialProduct ? 4 : 5;
+            const thirdUnit = isSpecialProduct ? 15 : 20;
+            
+            // 현재 단가들 계산
+            const unitPrice2nd = variantPrices.unitPrice2nd || supplyPrice;
+            const unitPrice3rd = variantPrices.unitPrice3rd || supplyPrice;
+            
+            newForms[product.product_no] = {
+              supply_price: product.supply_price || '0',
+              unit_price_2nd: unitPrice2nd.toString(),
+              unit_price_3rd: unitPrice3rd.toString(),
+              // 자동 계산 값들
+              price_1kg: supplyPrice.toString(),
+              price_2nd_total: (unitPrice2nd * secondUnit).toString(),
+              price_3rd_total: (unitPrice3rd * thirdUnit).toString(),
+              additional_amount_2nd: ((unitPrice2nd * secondUnit) - supplyPrice).toString(),
+              additional_amount_3rd: ((unitPrice3rd * thirdUnit) - supplyPrice).toString()
+            };
+          }
+        });
+        
+        if (hasNewProducts) {
+          console.log(`✅ 탭 변경으로 인한 새로운 상품 ${sortedProducts.filter(p => !prev[p.product_no]).length}개의 폼 데이터 생성`);
+          
+          // 🧪 새로 생성된 폼 데이터의 옵션명 미리보기 (첫 2개 상품)
+          const newProducts = sortedProducts.filter(p => !prev[p.product_no]).slice(0, 2);
+          if (newProducts.length > 0) {
+            console.log('\n🧪 === 새로 생성된 폼 데이터 옵션명 미리보기 ===');
+            newProducts.forEach((product, index) => {
+              const formData = newForms[product.product_no];
+              if (formData) {
+                const specialProductCodes = ['P00000PN', 'P0000BIB', 'P0000BHX', 'P0000BHW', 'P0000BHV', 'P00000YR'];
+                const isSpecialProduct = specialProductCodes.includes(product.product_code);
+                const secondUnit = isSpecialProduct ? 4 : 5;
+                const thirdUnit = isSpecialProduct ? 15 : 20;
+                
+                const option1kg = `1kg(${formatPrice(formData.price_1kg)}원/kg)`;
+                const option2nd = `${secondUnit}kg(${formatPrice(formData.unit_price_2nd)}원/kg)`;
+                const option3rd = `${thirdUnit}kg(${formatPrice(formData.unit_price_3rd)}원/kg)`;
+                
+                console.log(`📦 ${product.product_code}: "${option1kg}", "${option2nd}", "${option3rd}"`);
+              }
+            });
+            console.log('🧪 === 옵션명 미리보기 끝 ===\n');
+          }
+        }
+        
+        return hasNewProducts ? newForms : prev;
+      });
+    }
+  }, [isPriceEditMode, sortedProducts]);
+
+  // 편집 모드에서 폼 데이터 누락 체크
+  const missingFormData = React.useMemo(() => {
+    if (!isPriceEditMode) return [];
+    return sortedProducts.filter(product => !priceEditForms[product.product_no]);
+  }, [isPriceEditMode, sortedProducts, priceEditForms]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -257,8 +372,23 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
         const unitPrice2nd = variantPrices.unitPrice2nd || supplyPrice;
         const unitPrice3rd = variantPrices.unitPrice3rd || supplyPrice;
         
+        // 디버깅: 공급가 확인
+        console.log(`상품 ${product.product_code} 공급가:`, product.supply_price, typeof product.supply_price);
+        
+        // 🧪 옵션명 생성 미리보기 (첫 2개 상품만)
+        if (sortedProducts.indexOf(product) < 2) {
+          const option1kg = `1kg(${formatPrice(supplyPrice.toString())}원/kg)`;
+          const option2nd = `${secondUnit}kg(${formatPrice(unitPrice2nd.toString())}원/kg)`;
+          const option3rd = `${thirdUnit}kg(${formatPrice(unitPrice3rd.toString())}원/kg)`;
+          
+          console.log(`🧪 ${product.product_code} 예상 옵션명:`);
+          console.log(`   "${option1kg}"`);
+          console.log(`   "${option2nd}"`);
+          console.log(`   "${option3rd}"`);
+        }
+        
         initialForms[product.product_no] = {
-          supply_price: product.supply_price,
+          supply_price: product.supply_price || '0',
           unit_price_2nd: unitPrice2nd.toString(),
           unit_price_3rd: unitPrice3rd.toString(),
           // 자동 계산 값들
@@ -279,6 +409,9 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
     const product = sortedProducts.find(p => p.product_no === productNo);
     if (!product) return;
 
+    // 입력값에서 쉼표 제거 (사용자가 쉼표를 입력할 수 있음)
+    const cleanValue = value.replace(/,/g, '');
+
     // 특정 상품코드들은 1kg, 4kg, 15kg 단위 사용
     const specialProductCodes = ['P00000PN', 'P0000BIB', 'P0000BHX', 'P0000BHW', 'P0000BHV', 'P00000YR'];
     const isSpecialProduct = specialProductCodes.includes(product.product_code);
@@ -287,17 +420,17 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
 
     setPriceEditForms(prev => {
       const currentForm = prev[productNo] || {};
-      const updatedForm = { ...currentForm, [field]: value };
+      const updatedForm = { ...currentForm, [field]: cleanValue };
 
       // 자동 계산 로직
       if (field === 'supply_price') {
         // 2) 공급가 변경시 1kg 단가 자동 변경
-        const supplyPrice = parseFloat(value) || 0;
+        const supplyPrice = parseFloat(cleanValue) || 0;
         updatedForm.price_1kg = supplyPrice.toString();
         
         // 추가금액들도 재계산
-        const unitPrice2nd = parseFloat(updatedForm.unit_price_2nd) || supplyPrice;
-        const unitPrice3rd = parseFloat(updatedForm.unit_price_3rd) || supplyPrice;
+        const unitPrice2nd = parseFloat(updatedForm.unit_price_2nd.replace(/,/g, '')) || supplyPrice;
+        const unitPrice3rd = parseFloat(updatedForm.unit_price_3rd.replace(/,/g, '')) || supplyPrice;
         
         updatedForm.price_2nd_total = (unitPrice2nd * secondUnit).toString();
         updatedForm.price_3rd_total = (unitPrice3rd * thirdUnit).toString();
@@ -306,16 +439,16 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
         
       } else if (field === 'unit_price_2nd') {
         // 3) 2차가격 1kg당 단가 변경시 자동 계산
-        const unitPrice2nd = parseFloat(value) || 0;
-        const supplyPrice = parseFloat(updatedForm.supply_price) || 0;
+        const unitPrice2nd = parseFloat(cleanValue) || 0;
+        const supplyPrice = parseFloat(updatedForm.supply_price.replace(/,/g, '')) || 0;
         
         updatedForm.price_2nd_total = (unitPrice2nd * secondUnit).toString();
         updatedForm.additional_amount_2nd = ((unitPrice2nd * secondUnit) - supplyPrice).toString();
         
       } else if (field === 'unit_price_3rd') {
         // 4) 3차가격 1kg당 단가 변경시 자동 계산
-        const unitPrice3rd = parseFloat(value) || 0;
-        const supplyPrice = parseFloat(updatedForm.supply_price) || 0;
+        const unitPrice3rd = parseFloat(cleanValue) || 0;
+        const supplyPrice = parseFloat(updatedForm.supply_price.replace(/,/g, '')) || 0;
         
         updatedForm.price_3rd_total = (unitPrice3rd * thirdUnit).toString();
         updatedForm.additional_amount_3rd = ((unitPrice3rd * thirdUnit) - supplyPrice).toString();
@@ -326,6 +459,29 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
         [productNo]: updatedForm
       };
     });
+  };
+
+  // 숫자 문자열에서 쉼표 제거 및 소수점 형식 보장
+  const sanitizePrice = (priceStr: string): string => {
+    if (!priceStr || priceStr.trim() === '') return '0.00';
+    
+    // 쉼표와 공백 제거 후 숫자로 변환
+    const cleanStr = priceStr.replace(/[,\s]/g, '');
+    const cleanNumber = parseFloat(cleanStr);
+    
+    // 유효하지 않은 숫자인 경우 0으로 처리
+    if (isNaN(cleanNumber) || !isFinite(cleanNumber)) {
+      console.warn(`⚠️ 유효하지 않은 가격 값: "${priceStr}" → 0.00으로 변환`);
+      return '0.00';
+    }
+    
+    // 음수인 경우 경고 (추가금액은 음수일 수 있으므로 허용)
+    if (cleanNumber < 0) {
+      console.warn(`⚠️ 음수 가격 값: "${priceStr}" → 그대로 사용`);
+    }
+    
+    // 소수점 2자리 문자열로 변환 (카페24 API 형식)
+    return cleanNumber.toFixed(2);
   };
 
   // 전체 가격 저장
@@ -340,10 +496,44 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
         if (!formData) continue;
 
         try {
+          // 가격 데이터 정리 (쉼표 제거, 소수점 형식 보장)
+          const cleanPrice1kg = sanitizePrice(formData.price_1kg);
+          const cleanSupplyPrice = sanitizePrice(formData.supply_price);
+          const cleanAdditionalAmount2nd = sanitizePrice(formData.additional_amount_2nd);
+          const cleanAdditionalAmount3rd = sanitizePrice(formData.additional_amount_3rd);
+
+          console.log(`💾 상품 ${product.product_code} 저장 데이터:`, {
+            price: cleanPrice1kg,
+            supply_price: cleanSupplyPrice,
+            additional_2nd: cleanAdditionalAmount2nd,
+            additional_3rd: cleanAdditionalAmount3rd
+          });
+
+          // 🧪 저장될 옵션명 미리보기 (첫 2개 상품만)
+          if (sortedProducts.indexOf(product) < 2) {
+            const specialProductCodes = ['P00000PN', 'P0000BIB', 'P0000BHX', 'P0000BHW', 'P0000BHV', 'P00000YR'];
+            const isSpecialProduct = specialProductCodes.includes(product.product_code);
+            const secondUnit = isSpecialProduct ? 4 : 5;
+            const thirdUnit = isSpecialProduct ? 15 : 20;
+            
+            const price1kg = parseFloat(cleanPrice1kg);
+            const unitPrice2nd = parseFloat(formData.unit_price_2nd.replace(/,/g, '')) || price1kg;
+            const unitPrice3rd = parseFloat(formData.unit_price_3rd.replace(/,/g, '')) || price1kg;
+            
+            const futureOption1kg = `1kg(${formatPrice(price1kg.toString())}원/kg)`;
+            const futureOption2nd = `${secondUnit}kg(${formatPrice(unitPrice2nd.toString())}원/kg)`;
+            const futureOption3rd = `${thirdUnit}kg(${formatPrice(unitPrice3rd.toString())}원/kg)`;
+            
+            console.log(`🧪 ${product.product_code} 저장될 옵션명:`);
+            console.log(`   "${futureOption1kg}"`);
+            console.log(`   "${futureOption2nd}"`);
+            console.log(`   "${futureOption3rd}"`);
+          }
+
           // 기본 가격과 공급가 업데이트
           await cafe24API.updateProduct(product.product_no, {
-            price: formData.price_1kg,
-            supply_price: formData.supply_price
+            price: cleanPrice1kg,
+            supply_price: cleanSupplyPrice
           });
 
           // TODO: 5) 저장 시 옵션명, variant 업데이트는 다음 단계에서 구현
@@ -372,36 +562,7 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
     }
   };
 
-  const exportToExcel = () => {
-    const ws = XLSX.utils.json_to_sheet(sortedProducts.map(product => {
-      const variantPrices = calculateVariantPrices(product);
-      
-      return {
-        '상품코드': product.product_code,
-        '상품명': product.product_name,
-        '영문상품명': product.eng_product_name,
-        '1kg가격': `₩${formatPrice(variantPrices.price1kg.toString())}`,
-        '1kg단가': `₩${formatPrice(variantPrices.unitPrice1kg.toString())}/kg`,
-        [`${variantPrices.units.second}가격`]: variantPrices.price2nd ? `₩${formatPrice(variantPrices.price2nd.toString())}` : '-',
-        [`${variantPrices.units.second}단가`]: variantPrices.unitPrice2nd ? `₩${formatPrice(variantPrices.unitPrice2nd.toString())}/kg` : '-',
-        [`${variantPrices.units.third}가격`]: variantPrices.price3rd ? `₩${formatPrice(variantPrices.price3rd.toString())}` : '-',
-        [`${variantPrices.units.third}단가`]: variantPrices.unitPrice3rd ? `₩${formatPrice(variantPrices.unitPrice3rd.toString())}/kg` : '-',
-        '공급가': product.supply_price,
-        '표시여부': product.display === 'T' ? '표시' : '숨김',
-        '판매여부': product.selling === 'T' ? '판매' : '판매안함',
-        '노출그룹': product.exposure_limit_type === 'M' ? product.exposure_group_list?.join(', ') || '없음' : '모두공개',
-        '생성일': new Date(product.created_date).toLocaleDateString('ko-KR'),
-        '수정일': new Date(product.updated_date).toLocaleDateString('ko-KR'),
-      };
-    }));
 
-    const wb = XLSX.utils.book_new();
-    const sheetName = activeTab === 'all' ? '전체상품' : (EXPOSURE_GROUPS[activeTab as keyof typeof EXPOSURE_GROUPS]?.name || `그룹${activeTab}`);
-    XLSX.utils.book_append_sheet(wb, ws, sheetName);
-    const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-    const data = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    saveAs(data, `상품목록_${sheetName}_${new Date().toISOString().split('T')[0]}.xlsx`);
-  };
 
   const formatPrice = (price: string) => {
     return new Intl.NumberFormat('ko-KR').format(parseFloat(price));
@@ -499,32 +660,16 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
       {/* Header */}
       <div className="px-6 py-4 border-b border-gray-200">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="flex flex-col sm:flex-row gap-4 flex-1">
-            {/* Search */}
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-              <input
-                type="text"
-                placeholder="상품명, 상품코드, 모델명으로 검색..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="input-field pl-10"
-              />
-            </div>
-
-            {/* Filter */}
-            <div className="relative">
-              <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-              <select
-                value={filterDisplay}
-                onChange={(e) => setFilterDisplay(e.target.value)}
-                className="input-field pl-10"
-              >
-                <option value="all">전체</option>
-                <option value="display">표시 상품</option>
-                <option value="selling">판매 상품</option>
-              </select>
-            </div>
+          {/* Search */}
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+            <input
+              type="text"
+              placeholder="상품명, 상품코드, 모델명으로 검색..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="input-field pl-10"
+            />
           </div>
 
           {/* Action Buttons */}
@@ -556,13 +701,6 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
                 가격 수정
               </button>
             )}
-            <button
-              onClick={exportToExcel}
-              className="btn-secondary flex items-center gap-2"
-            >
-              <Download className="h-4 w-4" />
-              엑셀 다운로드
-            </button>
           </div>
         </div>
         
@@ -581,38 +719,69 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
 
         {/* Price Edit Mode Notice */}
         {isPriceEditMode && (
-          <div className="mt-3 p-3 bg-blue-100 border border-blue-200 rounded-lg">
-            <div className="flex items-center gap-2 text-blue-800">
-              <Edit className="h-4 w-4" />
-              <span className="font-medium">가격 수정 모드</span>
+          <>
+            {/* 폼 데이터 누락 경고 */}
+            {missingFormData.length > 0 && (
+              <div className="mt-3 p-3 bg-red-100 border border-red-300 rounded-lg">
+                <div className="flex items-center gap-2 text-red-800">
+                  <X className="h-4 w-4" />
+                  <span className="font-medium">⚠️ 데이터 오류 경고</span>
+                </div>
+                <p className="mt-1 text-sm text-red-700">
+                  <span className="font-medium">{missingFormData.length}개 상품</span>에서 폼 데이터가 누락되었습니다. 
+                  가격 수정 모드를 다시 시작하거나 페이지를 새로고침해주세요.
+                </p>
+                <div className="mt-2">
+                  <button
+                    onClick={() => {
+                      setIsPriceEditMode(false);
+                      setPriceEditForms({});
+                      setTimeout(() => setIsPriceEditMode(true), 100);
+                    }}
+                    className="text-xs bg-red-200 hover:bg-red-300 text-red-800 px-2 py-1 rounded"
+                  >
+                    가격 수정 모드 재시작
+                  </button>
+                </div>
+              </div>
+            )}
+            
+            <div className="mt-3 p-3 bg-blue-100 border border-blue-200 rounded-lg">
+              <div className="flex items-center gap-2 text-blue-800">
+                <Edit className="h-4 w-4" />
+                <span className="font-medium">가격 수정 모드</span>
+                <span className="text-xs bg-blue-200 px-2 py-1 rounded">
+                  {Object.keys(priceEditForms).length}/{sortedProducts.length} 상품 로드됨
+                </span>
+              </div>
+              <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                <div className="bg-yellow-50 p-2 rounded border border-yellow-200">
+                  <span className="font-medium text-yellow-800">📝 편집 가능:</span>
+                  <ul className="mt-1 text-yellow-700 text-xs">
+                    <li>• 공급가 (1kg 가격 자동 변경)</li>
+                    <li>• 2차가격 1kg당 단가</li>
+                    <li>• 3차가격 1kg당 단가</li>
+                  </ul>
+                </div>
+                <div className="bg-green-50 p-2 rounded border border-green-200">
+                  <span className="font-medium text-green-800">🔄 자동 계산:</span>
+                  <ul className="mt-1 text-green-700 text-xs">
+                    <li>• 총 가격 (단가 × 중량)</li>
+                    <li>• 추가금액 (총가격 - 1kg가격)</li>
+                    <li>• 옵션명 (단가 정보 포함)</li>
+                  </ul>
+                </div>
+                <div className="bg-blue-50 p-2 rounded border border-blue-200">
+                  <span className="font-medium text-blue-800">💾 저장 시:</span>
+                  <ul className="mt-1 text-blue-700 text-xs">
+                    <li>• 상품 기본가격/공급가</li>
+                    <li>• 옵션명 (단가 표시)</li>
+                    <li>• Variant 추가금액</li>
+                  </ul>
+                </div>
+              </div>
             </div>
-            <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-              <div className="bg-yellow-50 p-2 rounded border border-yellow-200">
-                <span className="font-medium text-yellow-800">📝 편집 가능:</span>
-                <ul className="mt-1 text-yellow-700 text-xs">
-                  <li>• 공급가 (1kg 가격 자동 변경)</li>
-                  <li>• 2차가격 1kg당 단가</li>
-                  <li>• 3차가격 1kg당 단가</li>
-                </ul>
-              </div>
-              <div className="bg-green-50 p-2 rounded border border-green-200">
-                <span className="font-medium text-green-800">🔄 자동 계산:</span>
-                <ul className="mt-1 text-green-700 text-xs">
-                  <li>• 총 가격 (단가 × 중량)</li>
-                  <li>• 추가금액 (총가격 - 1kg가격)</li>
-                  <li>• 옵션명 (단가 정보 포함)</li>
-                </ul>
-              </div>
-              <div className="bg-blue-50 p-2 rounded border border-blue-200">
-                <span className="font-medium text-blue-800">💾 저장 시:</span>
-                <ul className="mt-1 text-blue-700 text-xs">
-                  <li>• 상품 기본가격/공급가</li>
-                  <li>• 옵션명 (단가 표시)</li>
-                  <li>• Variant 추가금액</li>
-                </ul>
-              </div>
-            </div>
-          </div>
+          </>
         )}
       </div>
 
@@ -641,6 +810,15 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
               </th>
               <th className="table-header">
                 <button
+                  onClick={() => handleSort('supply_price')}
+                  className="flex items-center gap-1 hover:text-gray-900 font-medium text-xs text-gray-500 uppercase tracking-wider"
+                >
+                  공급가
+                  {getSortIcon('supply_price')}
+                </button>
+              </th>
+              <th className="table-header">
+                <button
                   onClick={() => handleSort('price')}
                   className="flex items-center gap-1 hover:text-gray-900 font-medium text-xs text-gray-500 uppercase tracking-wider"
                 >
@@ -657,33 +835,6 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
                 <span className="font-medium text-xs text-gray-500 uppercase tracking-wider">
                   3차 가격
                 </span>
-              </th>
-              <th className="table-header">
-                <button
-                  onClick={() => handleSort('supply_price')}
-                  className="flex items-center gap-1 hover:text-gray-900 font-medium text-xs text-gray-500 uppercase tracking-wider"
-                >
-                  공급가
-                  {getSortIcon('supply_price')}
-                </button>
-              </th>
-              <th className="table-header">
-                <button
-                  onClick={() => handleSort('display')}
-                  className="flex items-center gap-1 hover:text-gray-900 font-medium text-xs text-gray-500 uppercase tracking-wider"
-                >
-                  표시
-                  {getSortIcon('display')}
-                </button>
-              </th>
-              <th className="table-header">
-                <button
-                  onClick={() => handleSort('selling')}
-                  className="flex items-center gap-1 hover:text-gray-900 font-medium text-xs text-gray-500 uppercase tracking-wider"
-                >
-                  판매
-                  {getSortIcon('selling')}
-                </button>
               </th>
               <th className="table-header">노출그룹</th>
               <th className="table-header">
@@ -717,18 +868,61 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
                     )}
                   </td>
                   
+                  {/* 공급가 */}
+                  <td className="table-cell">
+                    {isPriceEditMode ? (
+                      priceEditForms[product.product_no] ? (
+                        <input
+                          type="number"
+                          value={priceEditForms[product.product_no].supply_price}
+                          onChange={(e) => updatePriceForm(product.product_no, 'supply_price', e.target.value)}
+                          className="input-field bg-yellow-50 border-yellow-200"
+                          placeholder="공급가 (편집가능)"
+                        />
+                      ) : (
+                        <div className="bg-red-50 border border-red-200 rounded p-2">
+                          <div className="text-red-600 text-xs font-medium">⚠️ 데이터 오류</div>
+                          <div className="text-red-500 text-xs">폼 데이터 없음</div>
+                        </div>
+                      )
+                    ) : editingProduct === product.product_no ? (
+                      <input
+                        type="number"
+                        value={editForm.supply_price || ''}
+                        onChange={(e) => setEditForm({ ...editForm, supply_price: e.target.value })}
+                        className="input-field"
+                        placeholder="공급가"
+                      />
+                    ) : (
+                      formatPrice(product.supply_price)
+                    )}
+                  </td>
+                  
                   {/* 1kg 가격 (공급가 기반) */}
                   <td className="table-cell">
                     {isPriceEditMode ? (
-                      <div>
-                        <div className="text-xs text-gray-600 mb-1">공급가 (자동반영)</div>
-                        <div className="font-medium text-blue-600">
-                          ₩{formatPrice(priceEditForms[product.product_no]?.price_1kg || '0')}
+                      priceEditForms[product.product_no] ? (
+                        <div>
+                          <div className="text-xs text-gray-600 mb-1">공급가 (자동반영)</div>
+                          <div className="font-medium text-blue-600">
+                            ₩{formatPrice(priceEditForms[product.product_no].price_1kg)}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            ₩{formatPrice(priceEditForms[product.product_no].price_1kg)}/kg
+                          </div>
+                          {/* 옵션명 미리보기 */}
+                          <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded text-xs">
+                            <div className="text-green-600 font-mono break-words">
+                              "1kg({formatPrice(priceEditForms[product.product_no].price_1kg)}원/kg)"
+                            </div>
+                          </div>
                         </div>
-                        <div className="text-xs text-gray-500">
-                          ₩{formatPrice(priceEditForms[product.product_no]?.price_1kg || '0')}/kg
+                      ) : (
+                        <div className="bg-red-50 border border-red-200 rounded p-2">
+                          <div className="text-red-600 text-xs font-medium">⚠️ 데이터 오류</div>
+                          <div className="text-red-500 text-xs">폼 데이터 없음</div>
                         </div>
-                      </div>
+                      )
                     ) : editingProduct === product.product_no ? (
                       <input
                         type="number"
@@ -748,22 +942,35 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
                   {/* 2차 가격 (5kg 또는 4kg) */}
                   <td className="table-cell">
                     {isPriceEditMode ? (
-                      <div>
-                        <div className="text-xs text-gray-600 mb-1">{variantPrices.units.second}</div>
-                        <input
-                          type="number"
-                          value={priceEditForms[product.product_no]?.unit_price_2nd || ''}
-                          onChange={(e) => updatePriceForm(product.product_no, 'unit_price_2nd', e.target.value)}
-                          className="input-field text-sm mb-1"
-                          placeholder="1kg당 단가"
-                        />
-                        <div className="text-xs text-green-600 font-medium">
-                          총: ₩{formatPrice(priceEditForms[product.product_no]?.price_2nd_total || '0')}
+                      priceEditForms[product.product_no] ? (
+                        <div>
+                          <div className="text-xs text-gray-600 mb-1">{variantPrices.units.second}</div>
+                          <input
+                            type="number"
+                            value={priceEditForms[product.product_no].unit_price_2nd}
+                            onChange={(e) => updatePriceForm(product.product_no, 'unit_price_2nd', e.target.value)}
+                            className="input-field text-sm mb-1"
+                            placeholder="1kg당 단가"
+                          />
+                          <div className="text-xs text-green-600 font-medium">
+                            총: ₩{formatPrice(priceEditForms[product.product_no].price_2nd_total)}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            추가: ₩{formatPrice(priceEditForms[product.product_no].additional_amount_2nd)}
+                          </div>
+                          {/* 옵션명 미리보기 */}
+                          <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded text-xs">
+                            <div className="text-green-600 font-mono break-words">
+                              "{variantPrices.units.second}({formatPrice(priceEditForms[product.product_no].unit_price_2nd)}원/kg)"
+                            </div>
+                          </div>
                         </div>
-                        <div className="text-xs text-gray-500">
-                          추가: ₩{formatPrice(priceEditForms[product.product_no]?.additional_amount_2nd || '0')}
+                      ) : (
+                        <div className="bg-red-50 border border-red-200 rounded p-2">
+                          <div className="text-red-600 text-xs font-medium">⚠️ 데이터 오류</div>
+                          <div className="text-red-500 text-xs">폼 데이터 없음</div>
                         </div>
-                      </div>
+                      )
                     ) : variantPrices.price2nd ? (
                       <div>
                         <div className="text-xs text-gray-600 mb-1">{variantPrices.units.second}</div>
@@ -778,22 +985,35 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
                   {/* 3차 가격 (20kg 또는 15kg) */}
                   <td className="table-cell">
                     {isPriceEditMode ? (
-                      <div>
-                        <div className="text-xs text-gray-600 mb-1">{variantPrices.units.third}</div>
-                        <input
-                          type="number"
-                          value={priceEditForms[product.product_no]?.unit_price_3rd || ''}
-                          onChange={(e) => updatePriceForm(product.product_no, 'unit_price_3rd', e.target.value)}
-                          className="input-field text-sm mb-1"
-                          placeholder="1kg당 단가"
-                        />
-                        <div className="text-xs text-green-600 font-medium">
-                          총: ₩{formatPrice(priceEditForms[product.product_no]?.price_3rd_total || '0')}
+                      priceEditForms[product.product_no] ? (
+                        <div>
+                          <div className="text-xs text-gray-600 mb-1">{variantPrices.units.third}</div>
+                          <input
+                            type="number"
+                            value={priceEditForms[product.product_no].unit_price_3rd}
+                            onChange={(e) => updatePriceForm(product.product_no, 'unit_price_3rd', e.target.value)}
+                            className="input-field text-sm mb-1"
+                            placeholder="1kg당 단가"
+                          />
+                          <div className="text-xs text-green-600 font-medium">
+                            총: ₩{formatPrice(priceEditForms[product.product_no].price_3rd_total)}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            추가: ₩{formatPrice(priceEditForms[product.product_no].additional_amount_3rd)}
+                          </div>
+                          {/* 옵션명 미리보기 */}
+                          <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded text-xs">
+                            <div className="text-green-600 font-mono break-words">
+                              "{variantPrices.units.third}({formatPrice(priceEditForms[product.product_no].unit_price_3rd)}원/kg)"
+                            </div>
+                          </div>
                         </div>
-                        <div className="text-xs text-gray-500">
-                          추가: ₩{formatPrice(priceEditForms[product.product_no]?.additional_amount_3rd || '0')}
+                      ) : (
+                        <div className="bg-red-50 border border-red-200 rounded p-2">
+                          <div className="text-red-600 text-xs font-medium">⚠️ 데이터 오류</div>
+                          <div className="text-red-500 text-xs">폼 데이터 없음</div>
                         </div>
-                      </div>
+                      )
                     ) : variantPrices.price3rd ? (
                       <div>
                         <div className="text-xs text-gray-600 mb-1">{variantPrices.units.third}</div>
@@ -802,68 +1022,6 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
                       </div>
                     ) : (
                       <span className="text-gray-400 text-sm">-</span>
-                    )}
-                  </td>
-                  
-                  <td className="table-cell">
-                    {isPriceEditMode ? (
-                      <input
-                        type="number"
-                        value={priceEditForms[product.product_no]?.supply_price || ''}
-                        onChange={(e) => updatePriceForm(product.product_no, 'supply_price', e.target.value)}
-                        className="input-field bg-yellow-50 border-yellow-200"
-                        placeholder="공급가 (편집가능)"
-                      />
-                    ) : editingProduct === product.product_no ? (
-                      <input
-                        type="number"
-                        value={editForm.supply_price || ''}
-                        onChange={(e) => setEditForm({ ...editForm, supply_price: e.target.value })}
-                        className="input-field"
-                        placeholder="공급가"
-                      />
-                    ) : (
-                      formatPrice(product.supply_price)
-                    )}
-                  </td>
-                  <td className="table-cell">
-                    {editingProduct === product.product_no ? (
-                      <select
-                        value={editForm.display || ''}
-                        onChange={(e) => setEditForm({ ...editForm, display: e.target.value })}
-                        className="input-field"
-                      >
-                        <option value="T">표시</option>
-                        <option value="F">숨김</option>
-                      </select>
-                    ) : (
-                      <span className={`px-2 py-1 text-xs rounded-full ${
-                        product.display === 'T' 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-red-100 text-red-800'
-                      }`}>
-                        {product.display === 'T' ? '표시' : '숨김'}
-                      </span>
-                    )}
-                  </td>
-                  <td className="table-cell">
-                    {editingProduct === product.product_no ? (
-                      <select
-                        value={editForm.selling || ''}
-                        onChange={(e) => setEditForm({ ...editForm, selling: e.target.value })}
-                        className="input-field"
-                      >
-                        <option value="T">판매</option>
-                        <option value="F">판매안함</option>
-                      </select>
-                    ) : (
-                      <span className={`px-2 py-1 text-xs rounded-full ${
-                        product.selling === 'T' 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-red-100 text-red-800'
-                      }`}>
-                        {product.selling === 'T' ? '판매' : '판매안함'}
-                      </span>
                     )}
                   </td>
                   <td className="table-cell">
