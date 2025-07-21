@@ -14,15 +14,15 @@ interface ProductTableProps {
   onProductsUpdate: () => void;
 }
 
-// 카페24 노출 그룹 정의
+// 카페24 노출 그룹 정의 (실제 데이터 기반)
 const EXPOSURE_GROUPS = {
   'all': { name: '전체', description: '모든 상품' },
   'public': { name: '모두공개', description: '제한 없음' },
-  '8': { name: 'S그룹', description: 'S 등급 회원' },
-  '9': { name: 'O그룹', description: 'O 등급 회원' },
-  '10': { name: 'P그룹', description: 'P 등급 회원' },
-  '11': { name: 'E그룹', description: 'E 등급 회원' },
-  '12': { name: 'X그룹', description: 'X 등급 회원' },
+  '1': { name: 'VIP', description: 'VIP 회원 전용 상품' },
+  '8': { name: 'GOLD', description: 'GOLD 회원 전용 상품' },
+  '9': { name: 'SILVER', description: 'SILVER 회원 전용 상품' },
+  '10': { name: 'BRONZE', description: 'BRONZE 회원 전용 상품' },
+  '11': { name: 'BASIC', description: 'BASIC 회원 전용 상품' },
 };
 
 type SortField = 'product_no' | 'product_code' | 'product_name' | 'price' | 'supply_price' | 'display' | 'selling' | 'updated_date';
