@@ -661,7 +661,18 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
         setPriceEditForms({});
         
         console.log('🔄 가격 업데이트 완료 후 상품 목록 새로고침 시작...');
-        onProductsUpdate();
+        
+        // 업데이트된 데이터 반영을 위한 안내 메시지
+        toast('업데이트된 가격을 반영하는 중입니다... (2초)', {
+          duration: 2000,
+          icon: '🔄'
+        });
+        
+        // 카페24 API 캐시 반영을 위해 2초 대기 후 새로고침
+        setTimeout(() => {
+          console.log('⏰ 2초 대기 후 데이터 새로고침 실행...');
+          onProductsUpdate();
+        }, 2000);
       }
     } catch (error) {
       console.error('전체 가격 업데이트 중 오류:', error);

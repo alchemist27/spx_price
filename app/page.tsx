@@ -87,8 +87,9 @@ export default function Home() {
       while (hasMore) {
         console.log(`📄 페이지 ${Math.floor(offset / limit) + 1} 조회 중... (offset: ${offset}, limit: ${limit})`);
         
-        // 카테고리 77번과 variants 포함하여 조회
-        const response = await axios.get(`/api/products?limit=${limit}&offset=${offset}&embed=variants&category=77`);
+        // 카테고리 77번과 variants 포함하여 조회 (캐시 방지)
+        const timestamp = Date.now();
+        const response = await axios.get(`/api/products?limit=${limit}&offset=${offset}&embed=variants&category=77&_t=${timestamp}`);
         const products = response.data.products || [];
         
         console.log(`✅ ${products.length}개 상품 조회 완료 (카테고리 77, variants 포함)`);
