@@ -1,8 +1,56 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getToken, isTokenExpired } from '@/lib/firebase';
+import { getToken, isTokenExpired, saveToken, Cafe24Token } from '@/lib/firebase';
 import axios from 'axios';
 
 const CAFE24_BASE_URL = `https://sopexkorea.cafe24api.com/api/v2`;
+
+// 토큰 갱신 함수
+async function refreshToken(refreshTokenValue: string): Promise<Cafe24Token | null> {
+  try {
+    console.log('🔄 토큰 갱신 시도...');
+    
+    const response = await axios.post(
+      `${CAFE24_BASE_URL}/oauth/token`,
+      `grant_type=refresh_token&refresh_token=${refreshTokenValue}`,
+      {
+        headers: {
+          'Authorization': `Basic ${btoa(`${process.env.NEXT_PUBLIC_CAFE24_CLIENT_ID || 'your_client_id'}:${process.env.NEXT_PUBLIC_CAFE24_CLIENT_SECRET || 'your_client_secret'}`)}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+      }
+    );
+
+    const expiresIn = response.data.expires_in || 3600; // 기본값: 1시간
+    const newToken: Cafe24Token = {
+      access_token: response.data.access_token,
+      refresh_token: response.data.refresh_token || refreshTokenValue,
+      expires_at: Date.now() + (expiresIn * 1000),
+      token_type: response.data.token_type || 'Bearer',
+    };
+
+    console.log('✅ 토큰 갱신 성공, Firestore에 저장...');
+    await saveToken(newToken);
+    return newToken;
+  } catch (error) {
+    console.error('❌ 토큰 갱신 실패:', error);
+    return null;
+  }
+}
+
+// 유효한 토큰 얻기
+async function getValidToken(): Promise<string | null> {
+  const token = await getToken();
+  if (!token) return null;
+
+  if (isTokenExpired(token)) {
+    console.log('🔄 토큰이 만료됨, 갱신 시도...');
+    const refreshed = await refreshToken(token.refresh_token);
+    if (!refreshed) return null;
+    return refreshed.access_token;
+  }
+
+  return token.access_token;
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,21 +63,12 @@ export async function GET(request: NextRequest) {
     
     console.log('📋 페이지네이션 파라미터:', { limit, offset });
     
-    // 저장된 토큰 확인
-    const token = await getToken();
-    if (!token) {
-      console.log('❌ 저장된 토큰 없음');
+    // 유효한 토큰 확인 (만료 시 자동 갱신)
+    const accessToken = await getValidToken();
+    if (!accessToken) {
+      console.log('❌ 유효한 토큰이 없음 (갱신 실패 포함)');
       return NextResponse.json(
         { error: 'No valid token available' },
-        { status: 401 }
-      );
-    }
-
-    // 토큰 만료 확인
-    if (isTokenExpired(token)) {
-      console.log('❌ 토큰 만료됨');
-      return NextResponse.json(
-        { error: 'Token expired' },
         { status: 401 }
       );
     }
@@ -42,7 +81,7 @@ export async function GET(request: NextRequest) {
     
     const response = await axios.get(apiUrl, {
       headers: {
-        'Authorization': `Bearer ${token.access_token}`,
+        'Authorization': `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
         'X-Cafe24-Api-Version': '2025-06-01',
       },
