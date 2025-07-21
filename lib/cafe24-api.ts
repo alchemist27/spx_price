@@ -38,6 +38,13 @@ export interface Cafe24Product {
   clearance_category_code: string | null;
   exposure_limit_type: string;
   exposure_group_list: number[];
+  category: Array<{
+    category_no: number;
+    category_name: string;
+    category_depth: number;
+    parent_category_no: number;
+    category_path: string;
+  }> | null;
   variants?: Array<{
     additional_amount: string;
     custom_variant_code: string;
