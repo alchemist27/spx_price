@@ -659,6 +659,8 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
         }
         setIsPriceEditMode(false);
         setPriceEditForms({});
+        
+        console.log('🔄 가격 업데이트 완료 후 상품 목록 새로고침 시작...');
         onProductsUpdate();
       }
     } catch (error) {
