@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getToken, isTokenExpired, saveToken, Cafe24Token } from '@/lib/firebase';
 import axios from 'axios';
 
+// API 라우트를 Dynamic으로 설정하여 정적 생성 방지
+export const dynamic = 'force-dynamic';
+
 const CAFE24_BASE_URL = `https://sopexkorea.cafe24api.com/api/v2`;
 
 // 토큰 갱신 함수
@@ -56,8 +59,8 @@ export async function GET(request: NextRequest) {
   try {
     console.log('📦 상품 목록 API 호출 시작');
     
-    // URL 파라미터 추출
-    const { searchParams } = new URL(request.url);
+    // URL 파라미터 추출 (request.nextUrl.searchParams 사용으로 Dynamic Server Usage 방지)
+    const searchParams = request.nextUrl.searchParams;
     const limit = Math.min(parseInt(searchParams.get('limit') || '100'), 100); // 최대 100개
     const offset = parseInt(searchParams.get('offset') || '0');
     const embed = searchParams.get('embed'); // embed 파라미터 추가
