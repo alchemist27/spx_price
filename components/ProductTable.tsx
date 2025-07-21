@@ -233,10 +233,10 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
         '영문상품명': product.eng_product_name,
         '1kg가격': `₩${formatPrice(variantPrices.price1kg.toString())}`,
         '1kg단가': `₩${formatPrice(variantPrices.unitPrice1kg.toString())}/kg`,
-        '5kg가격': variantPrices.price5kg ? `₩${formatPrice(variantPrices.price5kg.toString())}` : '-',
-        '5kg단가': variantPrices.unitPrice5kg ? `₩${formatPrice(variantPrices.unitPrice5kg.toString())}/kg` : '-',
-        '20kg가격': variantPrices.price20kg ? `₩${formatPrice(variantPrices.price20kg.toString())}` : '-',
-        '20kg단가': variantPrices.unitPrice20kg ? `₩${formatPrice(variantPrices.unitPrice20kg.toString())}/kg` : '-',
+        [`${variantPrices.units.second}가격`]: variantPrices.price2nd ? `₩${formatPrice(variantPrices.price2nd.toString())}` : '-',
+        [`${variantPrices.units.second}단가`]: variantPrices.unitPrice2nd ? `₩${formatPrice(variantPrices.unitPrice2nd.toString())}/kg` : '-',
+        [`${variantPrices.units.third}가격`]: variantPrices.price3rd ? `₩${formatPrice(variantPrices.price3rd.toString())}` : '-',
+        [`${variantPrices.units.third}단가`]: variantPrices.unitPrice3rd ? `₩${formatPrice(variantPrices.unitPrice3rd.toString())}/kg` : '-',
         '공급가': product.supply_price,
         '표시여부': product.display === 'T' ? '표시' : '숨김',
         '판매여부': product.selling === 'T' ? '판매' : '판매안함',
@@ -262,14 +262,19 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
   const calculateVariantPrices = (product: Cafe24Product) => {
     const basePrice = parseFloat(product.price);
     
+    // 특정 상품코드들은 1kg, 4kg, 15kg 단위 사용
+    const specialProductCodes = ['P00000PN', 'P0000BIB', 'P0000BHX', 'P0000BHW', 'P0000BHV', 'P00000YR'];
+    const isSpecialProduct = specialProductCodes.includes(product.product_code);
+    
     if (!product.variants || product.variants.length === 0) {
       return {
         price1kg: basePrice,
-        price5kg: null,
-        price20kg: null,
+        price2nd: null,
+        price3rd: null,
         unitPrice1kg: basePrice,
-        unitPrice5kg: null,
-        unitPrice20kg: null
+        unitPrice2nd: null,
+        unitPrice3rd: null,
+        units: isSpecialProduct ? { first: '1kg', second: '4kg', third: '15kg' } : { first: '1kg', second: '5kg', third: '20kg' }
       };
     }
 
@@ -279,16 +284,26 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
     );
 
     const price1kg = basePrice; // 기본 가격 (0.00 추가금액)
-    const price5kg = sortedVariants.length > 1 ? basePrice + parseFloat(sortedVariants[1].additional_amount) : null;
-    const price20kg = sortedVariants.length > 2 ? basePrice + parseFloat(sortedVariants[2].additional_amount) : null;
+    const price2nd = sortedVariants.length > 1 ? basePrice + parseFloat(sortedVariants[1].additional_amount) : null;
+    const price3rd = sortedVariants.length > 2 ? basePrice + parseFloat(sortedVariants[2].additional_amount) : null;
+
+    // 단위 설정
+    const units = isSpecialProduct 
+      ? { first: '1kg', second: '4kg', third: '15kg' }
+      : { first: '1kg', second: '5kg', third: '20kg' };
+    
+    // 단가 계산
+    const secondUnit = isSpecialProduct ? 4 : 5;
+    const thirdUnit = isSpecialProduct ? 15 : 20;
 
     return {
       price1kg,
-      price5kg,
-      price20kg,
+      price2nd,
+      price3rd,
       unitPrice1kg: price1kg / 1,
-      unitPrice5kg: price5kg ? price5kg / 5 : null,
-      unitPrice20kg: price20kg ? price20kg / 20 : null
+      unitPrice2nd: price2nd ? price2nd / secondUnit : null,
+      unitPrice3rd: price3rd ? price3rd / thirdUnit : null,
+      units
     };
   };
 
@@ -421,12 +436,12 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
               </th>
               <th className="table-header">
                 <span className="font-medium text-xs text-gray-500 uppercase tracking-wider">
-                  5kg 가격
+                  2차 가격
                 </span>
               </th>
               <th className="table-header">
                 <span className="font-medium text-xs text-gray-500 uppercase tracking-wider">
-                  20kg 가격
+                  3차 가격
                 </span>
               </th>
               <th className="table-header">
@@ -506,24 +521,26 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
                     )}
                   </td>
                   
-                  {/* 5kg 가격 */}
+                  {/* 2차 가격 (5kg 또는 4kg) */}
                   <td className="table-cell">
-                    {variantPrices.price5kg ? (
+                    {variantPrices.price2nd ? (
                       <div>
-                        <div className="font-medium">₩{formatPrice(variantPrices.price5kg.toString())}</div>
-                        <div className="text-xs text-gray-500">₩{formatPrice(variantPrices.unitPrice5kg!.toString())}/kg</div>
+                        <div className="text-xs text-gray-600 mb-1">{variantPrices.units.second}</div>
+                        <div className="font-medium">₩{formatPrice(variantPrices.price2nd.toString())}</div>
+                        <div className="text-xs text-gray-500">₩{formatPrice(variantPrices.unitPrice2nd!.toString())}/kg</div>
                       </div>
                     ) : (
                       <span className="text-gray-400 text-sm">-</span>
                     )}
                   </td>
                   
-                  {/* 20kg 가격 */}
+                  {/* 3차 가격 (20kg 또는 15kg) */}
                   <td className="table-cell">
-                    {variantPrices.price20kg ? (
+                    {variantPrices.price3rd ? (
                       <div>
-                        <div className="font-medium">₩{formatPrice(variantPrices.price20kg.toString())}</div>
-                        <div className="text-xs text-gray-500">₩{formatPrice(variantPrices.unitPrice20kg!.toString())}/kg</div>
+                        <div className="text-xs text-gray-600 mb-1">{variantPrices.units.third}</div>
+                        <div className="font-medium">₩{formatPrice(variantPrices.price3rd.toString())}</div>
+                        <div className="text-xs text-gray-500">₩{formatPrice(variantPrices.unitPrice3rd!.toString())}/kg</div>
                       </div>
                     ) : (
                       <span className="text-gray-400 text-sm">-</span>

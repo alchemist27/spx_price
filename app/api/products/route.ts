@@ -61,8 +61,9 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(parseInt(searchParams.get('limit') || '100'), 100); // 최대 100개
     const offset = parseInt(searchParams.get('offset') || '0');
     const embed = searchParams.get('embed'); // embed 파라미터 추가
+    const category = searchParams.get('category'); // 카테고리 필터 추가
     
-    console.log('📋 페이지네이션 파라미터:', { limit, offset, embed });
+    console.log('📋 페이지네이션 파라미터:', { limit, offset, embed, category });
     
     // 유효한 토큰 확인 (만료 시 자동 갱신)
     const accessToken = await getValidToken();
@@ -82,6 +83,10 @@ export async function GET(request: NextRequest) {
       apiUrl += `&embed=${embed}`;
       console.log('🧪 Embed 파라미터 추가:', embed);
     }
+    if (category) {
+      apiUrl += `&category=${category}`;
+      console.log('🏷️ 카테고리 필터 추가:', category);
+    }
     
     console.log('🔗 API URL:', apiUrl);
     
@@ -99,7 +104,8 @@ export async function GET(request: NextRequest) {
       hasVariants: embed === 'variants' ? response.data.products?.some((p: any) => p.variants) : 'N/A',
       limit,
       offset,
-      embed
+      embed,
+      category
     });
 
     return NextResponse.json(response.data);
