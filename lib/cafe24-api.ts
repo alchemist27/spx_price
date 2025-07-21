@@ -375,31 +375,13 @@ class Cafe24API {
       option_text: string;
     }>;
   }[]): Promise<any> {
-    const token = await this.getValidToken();
-    if (!token) {
-      throw new Error('인증 토큰을 가져올 수 없습니다.');
-    }
-
-    console.log(`🔧 옵션 업데이트 시작: 상품 ${productNo}`);
+    console.log(`🔧 옵션 업데이트 시작: 상품 ${productNo} (API 라우터 사용)`);
     console.log(`📝 옵션 데이터:`, JSON.stringify(options, null, 2));
 
     try {
       const response = await axios.put(
-        `${CAFE24_BASE_URL}/admin/products/${productNo}/options`,
-        {
-          shop_no: 1,
-          request: {
-            option_list_type: "S",
-            options: options
-          }
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-            'X-Cafe24-Api-Version': '2025-06-01'
-          }
-        }
+        `/api/products/${productNo}/options`,
+        { options }
       );
 
       console.log(`✅ 옵션 업데이트 성공: 상품 ${productNo}`);
@@ -429,28 +411,13 @@ class Cafe24API {
     display?: string;
     selling?: string;
   }): Promise<any> {
-    const token = await this.getValidToken();
-    if (!token) {
-      throw new Error('인증 토큰을 가져올 수 없습니다.');
-    }
-
-    console.log(`🔧 Variant 업데이트 시작: 상품 ${productNo}, Variant ${variantCode}`);
+    console.log(`🔧 Variant 업데이트 시작: 상품 ${productNo}, Variant ${variantCode} (API 라우터 사용)`);
     console.log(`📝 Variant 데이터:`, JSON.stringify(variantData, null, 2));
 
     try {
       const response = await axios.put(
-        `${CAFE24_BASE_URL}/admin/products/${productNo}/variants/${variantCode}`,
-        {
-          shop_no: 1,
-          request: variantData
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-            'X-Cafe24-Api-Version': '2025-06-01'
-          }
-        }
+        `/api/products/${productNo}/variants/${variantCode}`,
+        variantData
       );
 
       console.log(`✅ Variant 업데이트 성공: 상품 ${productNo}, Variant ${variantCode}`);
