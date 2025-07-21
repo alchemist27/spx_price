@@ -813,42 +813,6 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
                 </div>
               </div>
             )}
-            
-            <div className="mt-3 p-3 bg-blue-100 border border-blue-200 rounded-lg">
-              <div className="flex items-center gap-2 text-blue-800">
-                <Edit className="h-4 w-4" />
-                <span className="font-medium">가격 수정 모드</span>
-                <span className="text-xs bg-blue-200 px-2 py-1 rounded">
-                  {Object.keys(priceEditForms).length}/{sortedProducts.length} 상품 로드됨
-                </span>
-              </div>
-              <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                <div className="bg-yellow-50 p-2 rounded border border-yellow-200">
-                  <span className="font-medium text-yellow-800">📝 편집 가능:</span>
-                  <ul className="mt-1 text-yellow-700 text-xs">
-                    <li>• 공급가 (1kg 가격 자동 변경)</li>
-                    <li>• 2차가격 1kg당 단가</li>
-                    <li>• 3차가격 1kg당 단가</li>
-                  </ul>
-                </div>
-                <div className="bg-green-50 p-2 rounded border border-green-200">
-                  <span className="font-medium text-green-800">🔄 자동 계산:</span>
-                  <ul className="mt-1 text-green-700 text-xs">
-                    <li>• 총 가격 (단가 × 중량)</li>
-                    <li>• 추가금액 (총가격 - 1kg가격)</li>
-                    <li>• 옵션명 (단가 정보 포함)</li>
-                  </ul>
-                </div>
-                <div className="bg-blue-50 p-2 rounded border border-blue-200">
-                  <span className="font-medium text-blue-800">💾 저장 시:</span>
-                  <ul className="mt-1 text-blue-700 text-xs">
-                    <li>• 상품 기본가격/공급가</li>
-                    <li>• 옵션명 (단가 표시)</li>
-                    <li>• Variant 추가금액</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
           </>
         )}
       </div>
@@ -896,12 +860,12 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
               </th>
               <th className="table-header w-36">
                 <span className="font-medium text-xs text-gray-500 uppercase tracking-wider">
-                  2차 가격
+                  4/5kg 가격
                 </span>
               </th>
               <th className="table-header w-36">
                 <span className="font-medium text-xs text-gray-500 uppercase tracking-wider">
-                  3차 가격
+                  15/20kg 가격
                 </span>
               </th>
               <th className="table-header">노출그룹</th>
