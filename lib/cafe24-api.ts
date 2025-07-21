@@ -36,6 +36,8 @@ export interface Cafe24Product {
   clearance_category_eng: string | null;
   clearance_category_kor: string | null;
   clearance_category_code: string | null;
+  exposure_limit_type: string;
+  exposure_group_list: number[];
 }
 
 export interface Cafe24ProductUpdateRequest {
@@ -118,15 +120,94 @@ class Cafe24API {
 
   async getProducts(): Promise<Cafe24Product[]> {
     try {
-      console.log('📦 상품 목록 조회 시작 (API 라우터 사용)');
+      console.log('📦 전체 상품 목록 조회 시작 (페이지네이션)');
       
-      const response = await axios.get('/api/products');
+      const allProducts: Cafe24Product[] = [];
+      const limit = 100; // 최대 100개씩
+      let offset = 0;
+      let hasMore = true;
       
-      console.log('✅ 상품 목록 조회 성공:', {
-        productCount: response.data.products?.length || 0
+      while (hasMore) {
+        console.log(`📄 페이지 ${Math.floor(offset / limit) + 1} 조회 중... (offset: ${offset}, limit: ${limit})`);
+        
+        const response = await axios.get(`/api/products?limit=${limit}&offset=${offset}`);
+        const products = response.data.products || [];
+        
+        console.log(`✅ ${products.length}개 상품 조회 완료`);
+        
+        if (products.length > 0) {
+          allProducts.push(...products);
+          offset += limit;
+          
+          // 더 가져올 상품이 있는지 확인 (100개 미만이면 마지막 페이지)
+          hasMore = products.length === limit;
+          
+          // API 호출 간격 조절 (500ms 대기)
+          if (hasMore) {
+            console.log('⏳ 다음 페이지 호출 전 500ms 대기...');
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+        } else {
+          hasMore = false;
+        }
+      }
+      
+      console.log('✅ 전체 상품 목록 조회 완료:', {
+        totalProducts: allProducts.length,
+        totalPages: Math.ceil(allProducts.length / limit)
       });
 
-      return response.data.products || [];
+      // 🔍 노출 그룹 디버깅 정보 출력
+      console.log('🔍 === 노출 그룹 디버깅 정보 ===');
+      
+      const exposureGroupStats = new Map<string, number>();
+      const exposureLimitTypeStats = new Map<string, number>();
+      const sampleProducts: any[] = [];
+      
+      allProducts.forEach((product, index) => {
+        // exposure_limit_type 통계
+        const limitType = product.exposure_limit_type || 'undefined';
+        exposureLimitTypeStats.set(limitType, (exposureLimitTypeStats.get(limitType) || 0) + 1);
+        
+        // exposure_group_list 통계
+        if (product.exposure_group_list && product.exposure_group_list.length > 0) {
+          product.exposure_group_list.forEach(groupId => {
+            exposureGroupStats.set(groupId.toString(), (exposureGroupStats.get(groupId.toString()) || 0) + 1);
+          });
+          
+          // 처음 몇 개 상품의 샘플 데이터 수집
+          if (sampleProducts.length < 10) {
+            sampleProducts.push({
+              product_no: product.product_no,
+              product_name: product.product_name.substring(0, 30) + '...',
+              exposure_limit_type: product.exposure_limit_type,
+              exposure_group_list: product.exposure_group_list
+            });
+          }
+        } else {
+          // 그룹이 없는 상품도 샘플에 포함
+          if (sampleProducts.length < 10) {
+            sampleProducts.push({
+              product_no: product.product_no,
+              product_name: product.product_name.substring(0, 30) + '...',
+              exposure_limit_type: product.exposure_limit_type,
+              exposure_group_list: product.exposure_group_list || '없음'
+            });
+          }
+        }
+      });
+      
+      console.log('📊 노출 제한 타입별 상품 수:', Object.fromEntries(exposureLimitTypeStats));
+      console.log('📊 노출 그룹별 상품 수:', Object.fromEntries(exposureGroupStats));
+      console.log('📝 상품 샘플 (처음 10개):', sampleProducts);
+      
+      // 실제로 존재하는 그룹 번호들 출력
+      const existingGroups = Array.from(exposureGroupStats.keys()).sort((a, b) => parseInt(a) - parseInt(b));
+      console.log('🎯 실제 존재하는 노출 그룹 번호들:', existingGroups);
+      
+      console.log('🔍 === 디버깅 정보 끝 ===');
+
+      return allProducts;
     } catch (error) {
       console.error('❌ 상품 목록 조회 실패:', error);
       throw error;
