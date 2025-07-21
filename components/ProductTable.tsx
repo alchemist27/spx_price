@@ -225,7 +225,6 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
 
   const exportToExcel = () => {
     const ws = XLSX.utils.json_to_sheet(sortedProducts.map(product => ({
-      '상품번호': product.product_no,
       '상품코드': product.product_code,
       '상품명': product.product_name,
       '영문상품명': product.eng_product_name,
@@ -352,15 +351,6 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
             <tr>
               <th className="table-header">
                 <button
-                  onClick={() => handleSort('product_no')}
-                  className="flex items-center gap-1 hover:text-gray-900 font-medium text-xs text-gray-500 uppercase tracking-wider"
-                >
-                  상품번호
-                  {getSortIcon('product_no')}
-                </button>
-              </th>
-              <th className="table-header">
-                <button
                   onClick={() => handleSort('product_code')}
                   className="flex items-center gap-1 hover:text-gray-900 font-medium text-xs text-gray-500 uppercase tracking-wider"
                 >
@@ -429,8 +419,7 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
           <tbody className="bg-white divide-y divide-gray-200">
             {sortedProducts.map((product) => (
               <tr key={product.product_no} className="hover:bg-gray-50">
-                <td className="table-cell font-medium">{product.product_no}</td>
-                <td className="table-cell">{product.product_code}</td>
+                <td className="table-cell font-medium">{product.product_code}</td>
                 <td className="table-cell">
                   {editingProduct === product.product_no ? (
                     <input
