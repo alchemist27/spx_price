@@ -558,7 +558,7 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
           console.log(`🔍 현재 옵션 정보:`, optionsInfo);
           console.log(`🔍 현재 옵션 배열:`, currentOptions);
 
-          // original_options 구성 (기존 옵션 구조)
+          // original_options 구성 (기존 옵션 구조 완전 복사)
           const originalOptions = currentOptions.map((option: any) => ({
             option_name: option.option_name,
             option_value: option.option_value.map((value: any) => ({
@@ -566,20 +566,31 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
             }))
           }));
 
-          // 새로운 옵션 구조 (기존 option_name 유지)
+          // 새로운 옵션 구조 (기존 속성들 모두 보존)
           const existingOptionName = currentOptions.length > 0 ? currentOptions[0].option_name : "용량";
+          const existingOption = currentOptions.length > 0 ? currentOptions[0] : null;
+          
           const newOptions = [
             {
-              option_name: existingOptionName, // 기존 option_name과 동일하게 유지
+              option_name: existingOptionName,
               option_value: [
                 { option_text: option1kg },
                 { option_text: option2nd },
                 { option_text: option3rd }
-              ]
+              ],
+              // 기존 옵션의 중요 속성들 보존
+              option_display_type: existingOption?.option_display_type || "R",
+              required_option: existingOption?.required_option || "T",
+              option_code: existingOption?.option_code || ""
             }
           ];
 
           console.log(`📝 사용할 옵션명: "${existingOptionName}"`);
+          console.log(`📝 기존 옵션 속성들:`, {
+            option_display_type: existingOption?.option_display_type,
+            required_option: existingOption?.required_option,
+            option_code: existingOption?.option_code
+          });
 
           const optionsData = {
             original_options: originalOptions,
