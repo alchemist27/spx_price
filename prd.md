@@ -676,9 +676,258 @@ request(options, function (error, response, body) {
     }
 }
 
-3. 카페24 api 최신버전: 2025-06-01
+3. 상품 옵션 수정하기
 
-4. Get Authentication Code
+[요청]
+var request = require("request");
+var payload = {
+    "shop_no": 1,
+    "request": {
+        "option_list_type": "S",
+        "original_options": [
+            {
+                "option_name": "Color",
+                "option_value": [
+                    {
+                        "option_text": "Black"
+                    },
+                    {
+                        "option_text": "Red"
+                    }
+                ]
+            },
+            {
+                "option_name": "Size",
+                "option_value": [
+                    {
+                        "option_text": "Small"
+                    },
+                    {
+                        "option_text": "Large"
+                    }
+                ]
+            }
+        ],
+        "options": [
+            {
+                "option_name": "Color",
+                "option_value": [
+                    {
+                        "option_image_file": "https://{domain}/web/upload/image_custom_615421761805558.gif",
+                        "option_link_image": "/web/product/big/201604/1_shop1_423399.png",
+                        "option_color": "#000000",
+                        "option_text": "Black"
+                    },
+                    {
+                        "option_image_file": "https://{domain}/web/upload/image_custom_615421761805551.gif",
+                        "option_link_image": "/web/product/big/201604/1_shop1_436875.png",
+                        "option_color": "#007543",
+                        "option_text": "Red"
+                    }
+                ],
+                "option_display_type": "P"
+            },
+            {
+                "option_name": "Size",
+                "option_value": [
+                    {
+                        "option_text": "Small"
+                    },
+                    {
+                        "option_text": "Large"
+                    }
+                ],
+                "option_display_type": "S"
+            }
+        ],
+        "use_additional_option": "T",
+        "additional_options": [
+            {
+                "additional_option_name": "Pattern",
+                "required_additional_option": "T",
+                "additional_option_text_length": 20
+            },
+            {
+                "additional_option_name": "Custom Option",
+                "required_additional_option": "F",
+                "additional_option_text_length": 10
+            }
+        ],
+        "use_attached_file_option": "T",
+        "attached_file_option": {
+            "option_name": "Pattern Images",
+            "required": "T",
+            "size_limit": 3
+        }
+    }
+};
+var options = { method: 'PUT',
+  url: 'https://{mallid}.cafe24api.com/api/v2/admin/products/24/options',
+  headers: {
+    'Authorization': "Bearer {access_token}",
+    'Content-Type': "application/json",
+    'X-Cafe24-Api-Version': "{version}"
+  },
+  body: payload,
+  json: true
+};
+request(options, function (error, response, body) {
+  if (error) throw new Error(error);
+  
+  console.log(body);
+});
+[응답]
+{
+    "option": {
+        "shop_no": 1,
+        "product_no": 24,
+        "has_option": "T",
+        "option_type": "T",
+        "option_list_type": "S",
+        "option_preset_code": "",
+        "options": [
+            {
+                "option_code": "",
+                "option_name": "Color",
+                "option_value": [
+                    {
+                        "option_image_file": "https://{domain}/web/product/option_button/201901/1b2fb6499d99b37581c79e10ad0b4d06.jpg",
+                        "option_link_image": "https://{domain}/web/product/big/201604/1_shop1_423399.png",
+                        "option_color": "#000000",
+                        "option_text": "Black",
+                        "value_no": null,
+                        "additional_amount": null
+                    },
+                    {
+                        "option_image_file": "https://{domain}/web/product/option_button/201901/7c5ge8616dc9b5j281c39dug740cjd28.jpg",
+                        "option_link_image": "https://{domain}/web/product/big/201604/1_shop1_436875.png",
+                        "option_color": "#007543",
+                        "option_text": "Red",
+                        "value_no": null,
+                        "additional_amount": null
+                    }
+                ],
+                "required_option": "T",
+                "option_display_type": "P"
+            },
+            {
+                "option_code": "",
+                "option_name": "Size",
+                "option_value": [
+                    {
+                        "option_image_file": "https://{domain}/web/product/option_button/201804/temp_shop1_931549.gif",
+                        "option_link_image": "",
+                        "option_color": "#000000",
+                        "option_text": "Small",
+                        "value_no": null,
+                        "additional_amount": null
+                    },
+                    {
+                        "option_image_file": "https://{domain}/web/product/option_button/201804/temp_shop1_931549.gif",
+                        "option_link_image": "",
+                        "option_color": "#007543",
+                        "option_text": "Large",
+                        "value_no": null,
+                        "additional_amount": null
+                    }
+                ],
+                "required_option": "T",
+                "option_display_type": "S"
+            }
+        ],
+        "use_additional_option": "T",
+        "additional_options": [
+            {
+                "additional_option_name": "Pattern",
+                "required_additional_option": "T",
+                "additional_option_text_length": 20
+            },
+            {
+                "additional_option_name": "Custom Option",
+                "required_additional_option": "F",
+                "additional_option_text_length": 10
+            }
+        ],
+        "use_attached_file_option": "T",
+        "attached_file_option": {
+            "option_name": "Pattern Images",
+            "required": "T",
+            "size_limit": 3
+        }
+    }
+}
+
+4. 상품 variant 수정하기
+[요청]
+var request = require("request");
+var payload = {
+    "shop_no": 1,
+    "request": {
+        "custom_variant_code": "OPTION_CUSTOM_CODE",
+        "display": "T",
+        "selling": "F",
+        "additional_amount": "-1000.00",
+        "quantity": 15,
+        "use_inventory": "T",
+        "important_inventory": "A",
+        "inventory_control_type": "B",
+        "display_soldout": "T",
+        "safety_inventory": 10
+    }
+};
+var options = { method: 'PUT',
+  url: 'https://{mallid}.cafe24api.com/api/v2/admin/products/16/variants/P000000P000A',
+  headers: {
+    'Authorization': "Bearer {access_token}",
+    'Content-Type': "application/json",
+    'X-Cafe24-Api-Version': "{version}"
+  },
+  body: payload,
+  json: true
+};
+request(options, function (error, response, body) {
+  if (error) throw new Error(error);
+  
+  console.log(body);
+});
+
+[응답]
+{
+    "variant": {
+        "shop_no": 1,
+        "variant_code": "P000000R000A",
+        "options": [
+            {
+                "name": "Color",
+                "value": "Black"
+            },
+            {
+                "name": "Size",
+                "value": "L"
+            }
+        ],
+        "custom_variant_code": "OPTION_CUSTOM_CODE",
+        "duplicated_custom_variant_code": "F",
+        "display": "T",
+        "selling": "F",
+        "additional_amount": "-1000.00",
+        "inventories": {
+            "shop_no": 1,
+            "variant_code": "P000000R000A",
+            "quantity": 15,
+            "use_inventory": "T",
+            "important_inventory": "A",
+            "inventory_control_type": "B",
+            "display_soldout": "T",
+            "safety_inventory": 10
+        }
+    }
+}
+
+
+5. 카페24 api 최신버전: 2025-06-01
+
+6. Get Authentication Code
 GET 'https://{mallid}.cafe24api.com/api/v2/oauth/authorize?response_type=code&client_id={client_id}&state={state}&redirect_uri={redirect_uri}&scope={scope}'
 
 5. Get Access Token 
