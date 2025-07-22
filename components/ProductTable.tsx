@@ -53,6 +53,10 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
     amount5kg: '300',
     amount20kg: '600'
   });
+  
+  // 가격 저장 진행률 상태
+  const [saveProgress, setSaveProgress] = useState(0);
+  const [totalSaveSteps, setTotalSaveSteps] = useState(0);
 
   // 🔍 상품 데이터 변경 시 디버깅 정보 출력
   React.useEffect(() => {
@@ -527,6 +531,7 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
   // 전체 가격 저장
   const saveAllPrices = async () => {
     setIsLoading(true);
+    setSaveProgress(0);
     let successCount = 0;
     let errorCount = 0;
 
@@ -540,9 +545,16 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
       return;
     }
 
-    console.log(`🔒 테스트 모드: ${TEST_PRODUCT_CODE} 상품만 업데이트 (총 ${allowedProducts.length}개)`);
+    // 각 상품당 4단계 (기본가격, 옵션명, 2차variant, 3차variant) = 총 steps 계산
+    const stepsPerProduct = 4;
+    const totalSteps = allowedProducts.length * stepsPerProduct;
+    setTotalSaveSteps(totalSteps);
+    
+    console.log(`🔒 테스트 모드: ${TEST_PRODUCT_CODE} 상품만 업데이트 (총 ${allowedProducts.length}개, ${totalSteps}단계)`);
 
     try {
+      let currentStep = 0;
+      
       for (const product of allowedProducts) {
         const formData = priceEditForms[product.product_no];
         if (!formData) continue;
@@ -582,6 +594,12 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
             supply_price: cleanSupplyPrice
           });
           console.log(`✅ 1단계 완료: 기본가격/공급가 업데이트 성공`);
+          
+          // 진행률 업데이트 (1/4 단계 완료)
+          currentStep++;
+          const progress = Math.round((currentStep / totalSteps) * 100);
+          setSaveProgress(progress);
+          console.log(`📊 진행률: ${progress}% (${currentStep}/${totalSteps})`);
 
           // 🔥 5-2) 기존 옵션 정보 조회 후 옵션명 업데이트
           console.log(`💾 2단계 - 기존 옵션 조회 및 옵션명 업데이트:`, {
@@ -643,6 +661,12 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
           
           await cafe24API.updateProductOptions(product.product_no, optionsData);
           console.log(`✅ 2단계 완료: 옵션명 업데이트 성공`);
+          
+          // 진행률 업데이트 (2/4 단계 완료)
+          currentStep++;
+          const progress2 = Math.round((currentStep / totalSteps) * 100);
+          setSaveProgress(progress2);
+          console.log(`📊 진행률: ${progress2}% (${currentStep}/${totalSteps})`);
 
           // 🔥 5-3) Variant 추가금액 업데이트
           if (product.variants && product.variants.length >= 2) {
@@ -664,6 +688,12 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
                 additional_amount: cleanAdditionalAmount2nd
               });
               console.log(`✅ 3단계 완료: 2차 Variant 업데이트 성공`);
+              
+              // 진행률 업데이트 (3/4 단계 완료)
+              currentStep++;
+              const progress3 = Math.round((currentStep / totalSteps) * 100);
+              setSaveProgress(progress3);
+              console.log(`📊 진행률: ${progress3}% (${currentStep}/${totalSteps})`);
             }
 
             // 3차 variant (20kg 또는 15kg) 업데이트
@@ -679,6 +709,12 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
                 additional_amount: cleanAdditionalAmount3rd
               });
               console.log(`✅ 4단계 완료: 3차 Variant 업데이트 성공`);
+              
+              // 진행률 업데이트 (4/4 단계 완료)
+              currentStep++;
+              const progress4 = Math.round((currentStep / totalSteps) * 100);
+              setSaveProgress(progress4);
+              console.log(`📊 진행률: ${progress4}% (${currentStep}/${totalSteps})`);
             }
           } else {
             console.warn(`⚠️ ${product.product_code}: variants 데이터가 부족합니다.`);
@@ -719,6 +755,7 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
       toast.error('가격 업데이트 중 오류가 발생했습니다.');
     } finally {
       setIsLoading(false);
+      setSaveProgress(0); // 진행률 초기화
     }
   };
 
@@ -839,10 +876,21 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
                 <button
                   onClick={saveAllPrices}
                   disabled={isLoading}
-                  className="btn-primary flex items-center gap-2 disabled:opacity-50"
+                  className="btn-primary flex items-center gap-2 disabled:opacity-50 relative overflow-hidden"
                 >
-                  <Save className="h-4 w-4" />
-                  {isLoading ? '저장 중...' : '가격 저장'}
+                  {/* 진행률 배경 */}
+                  {isLoading && (
+                    <div 
+                      className="absolute inset-0 bg-blue-400 transition-all duration-300 ease-out"
+                      style={{ width: `${saveProgress}%` }}
+                    />
+                  )}
+                  
+                  {/* 버튼 내용 */}
+                  <div className="relative z-10 flex items-center gap-2">
+                    <Save className="h-4 w-4" />
+                    {isLoading ? `저장 중... ${saveProgress}%` : '가격 저장'}
+                  </div>
                 </button>
                 <button
                   onClick={togglePriceEditMode}
