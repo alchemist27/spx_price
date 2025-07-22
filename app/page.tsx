@@ -85,11 +85,8 @@ export default function Home() {
     try {
       console.log('�� 상품 목록 로딩 시작...');
       
-      // 먼저 총 상품 수를 가져와서 전체 진행률을 계산할 수 있도록 함
-      const countResponse = await axios.get(`/api/products?limit=1&offset=0&category=77&_t=${Date.now()}`);
-      const totalCount = countResponse.data.count || 0;
-      setTotalExpectedProducts(totalCount);
-      console.log(`📊 총 예상 상품 수: ${totalCount}개`);
+      // 동적으로 총 상품 수를 파악하며 진행률 계산
+      let totalEstimated = 0;
       
       const allProducts: Cafe24Product[] = [];
       const limit = 100;
@@ -110,9 +107,38 @@ export default function Home() {
           allProducts.push(...products);
           offset += limit;
           
-          // 진행률 업데이트
-          const progress = totalCount > 0 ? Math.min((allProducts.length / totalCount) * 100, 100) : 0;
+          // 동적으로 총 상품 수 예상 및 진행률 업데이트
+          const pageNumber = Math.floor((offset - limit) / limit) + 1;
+          
+          if (pageNumber === 1) {
+            if (products.length < limit) {
+              // 첫 페이지가 100개 미만이면 그것이 총 개수
+              totalEstimated = products.length;
+            } else {
+              // 첫 페이지가 100개면 최소 200개는 있을 것으로 예상
+              totalEstimated = Math.max(200, products.length * 3); // 보수적으로 3배 예상
+            }
+            setTotalExpectedProducts(totalEstimated);
+            console.log(`📊 예상 총 상품 수: ${totalEstimated}개 (페이지 ${pageNumber} 기준)`);
+          } else if (products.length < limit) {
+            // 마지막 페이지에 도달하면 정확한 총 개수 확정
+            totalEstimated = allProducts.length;
+            setTotalExpectedProducts(totalEstimated);
+            console.log(`📊 정확한 총 상품 수 확정: ${totalEstimated}개`);
+          } else if (pageNumber > 1 && totalEstimated < allProducts.length * 1.5) {
+            // 예상보다 더 많은 상품이 있으면 예상치 증가
+            totalEstimated = Math.max(totalEstimated, allProducts.length * 2);
+            setTotalExpectedProducts(totalEstimated);
+            console.log(`📊 예상 총 상품 수 재조정: ${totalEstimated}개 (페이지 ${pageNumber} 기준)`);
+          }
+          
+          // 진행률 계산
+          const progress = totalEstimated > 0 ? 
+            Math.min((allProducts.length / totalEstimated) * 100, 99) : // 최대 99%까지만 (완료는 100%)
+            Math.min(pageNumber * 10, 90); // fallback: 페이지당 10%씩, 최대 90%
+          
           setLoadingProgress(Math.round(progress));
+          console.log(`📊 진행률: ${Math.round(progress)}% (${allProducts.length}/${totalEstimated} 상품)`);
           
           // 더 가져올 상품이 있는지 확인 (100개 미만이면 마지막 페이지)
           hasMore = products.length === limit;
@@ -129,6 +155,7 @@ export default function Home() {
       
       setProducts(allProducts);
       setLoadingProgress(100);
+      setTotalExpectedProducts(allProducts.length); // 최종 정확한 개수로 설정
       console.log(`✅ 총 ${allProducts.length}개 상품 로딩 완료 (카테고리 77, variants 포함)`);
     } catch (error) {
       console.error('❌ 상품 목록 조회 실패:', error);
