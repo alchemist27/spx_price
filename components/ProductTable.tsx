@@ -47,6 +47,12 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
   }>>({});
   const [sortField, setSortField] = useState<SortField>('product_no');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  
+  // 5kg/20kg 단가 자동 적용 기능
+  const [autoApplySettings, setAutoApplySettings] = useState({
+    amount5kg: '300',
+    amount20kg: '600'
+  });
 
   // 🔍 상품 데이터 변경 시 디버깅 정보 출력
   React.useEffect(() => {
@@ -459,6 +465,40 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
         [productNo]: updatedForm
       };
     });
+  };
+
+  // 5kg/20kg 단가 자동 적용 함수
+  const applyAutoPrice = (productNo: number, unitType: '5kg' | '20kg') => {
+    const product = sortedProducts.find(p => p.product_no === productNo);
+    if (!product || !priceEditForms[productNo]) return;
+
+    const formData = priceEditForms[productNo];
+    const supplyPrice = parseFloat(formData.supply_price.replace(/,/g, '')) || 0;
+    const deductionAmount = unitType === '5kg' ? 
+      parseFloat(autoApplySettings.amount5kg) : 
+      parseFloat(autoApplySettings.amount20kg);
+    
+    // 특정 상품코드들은 1kg, 4kg, 15kg 단위 사용
+    const specialProductCodes = ['P00000PN', 'P0000BIB', 'P0000BHX', 'P0000BHW', 'P0000BHV', 'P00000YR'];
+    const isSpecialProduct = specialProductCodes.includes(product.product_code);
+    
+    // 적용할 단위 및 필드 결정
+    const is5kgUnit = unitType === '5kg';
+    const actualUnit = is5kgUnit ? (isSpecialProduct ? 4 : 5) : (isSpecialProduct ? 15 : 20);
+    const fieldName = is5kgUnit ? 'unit_price_2nd' : 'unit_price_3rd';
+    
+    // 계산: 공급가에서 차감된 금액을 kg당 단가로 설정
+    const newUnitPrice = supplyPrice - deductionAmount;
+    
+    if (newUnitPrice < 0) {
+      toast.error(`계산된 단가가 음수입니다. 공급가(${formatPrice(supplyPrice.toString())})보다 작은 차감액을 입력해주세요.`);
+      return;
+    }
+
+    // 폼 업데이트 (자동 계산 로직이 포함된 updatePriceForm 사용)
+    updatePriceForm(productNo, fieldName, newUnitPrice.toString());
+    
+    toast.success(`${actualUnit}kg 단가가 적용되었습니다: ₩${formatPrice(newUnitPrice.toString())}/kg`);
   };
 
   // 숫자 문자열에서 쉼표 제거 및 소수점 형식 보장
@@ -956,13 +996,73 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
                   <td className="table-cell w-32">
                     {isPriceEditMode ? (
                       priceEditForms[product.product_no] ? (
-                        <input
-                          type="number"
-                          value={priceEditForms[product.product_no].supply_price}
-                          onChange={(e) => updatePriceForm(product.product_no, 'supply_price', e.target.value)}
-                          className="input-field bg-yellow-50 border-yellow-200 w-full min-w-24 px-2 py-1 text-sm"
-                          placeholder="공급가"
-                        />
+                        <div className="space-y-3">
+                          {/* 공급가 입력 필드 */}
+                          <input
+                            type="number"
+                            value={priceEditForms[product.product_no].supply_price}
+                            onChange={(e) => updatePriceForm(product.product_no, 'supply_price', e.target.value)}
+                            className="input-field bg-yellow-50 border-yellow-200 w-full min-w-24 px-2 py-1 text-sm"
+                            placeholder="공급가"
+                          />
+                          
+                          {/* 5kg/20kg 단가 자동 적용 UI */}
+                          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-2">
+                            <div className="text-xs font-medium text-blue-800 mb-2">단가 자동 적용</div>
+                            
+                            {/* 5kg 적용 */}
+                            <div className="flex items-center gap-1 text-xs">
+                              <span className="text-gray-600 min-w-[24px]">
+                                {(() => {
+                                  const specialProductCodes = ['P00000PN', 'P0000BIB', 'P0000BHX', 'P0000BHW', 'P0000BHV', 'P00000YR'];
+                                  const isSpecialProduct = specialProductCodes.includes(product.product_code);
+                                  return isSpecialProduct ? '4kg' : '5kg';
+                                })()}:
+                              </span>
+                              <span className="text-gray-600">-</span>
+                              <input
+                                type="number"
+                                value={autoApplySettings.amount5kg}
+                                onChange={(e) => setAutoApplySettings(prev => ({ ...prev, amount5kg: e.target.value }))}
+                                className="w-16 px-1 py-0.5 text-xs border border-gray-300 rounded"
+                                placeholder="300"
+                              />
+                              <span className="text-gray-600">원</span>
+                              <button
+                                onClick={() => applyAutoPrice(product.product_no, '5kg')}
+                                className="ml-1 px-2 py-0.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                              >
+                                적용
+                              </button>
+                            </div>
+                            
+                            {/* 20kg 적용 */}
+                            <div className="flex items-center gap-1 text-xs">
+                              <span className="text-gray-600 min-w-[24px]">
+                                {(() => {
+                                  const specialProductCodes = ['P00000PN', 'P0000BIB', 'P0000BHX', 'P0000BHW', 'P0000BHV', 'P00000YR'];
+                                  const isSpecialProduct = specialProductCodes.includes(product.product_code);
+                                  return isSpecialProduct ? '15kg' : '20kg';
+                                })()}:
+                              </span>
+                              <span className="text-gray-600">-</span>
+                              <input
+                                type="number"
+                                value={autoApplySettings.amount20kg}
+                                onChange={(e) => setAutoApplySettings(prev => ({ ...prev, amount20kg: e.target.value }))}
+                                className="w-16 px-1 py-0.5 text-xs border border-gray-300 rounded"
+                                placeholder="600"
+                              />
+                              <span className="text-gray-600">원</span>
+                              <button
+                                onClick={() => applyAutoPrice(product.product_no, '20kg')}
+                                className="ml-1 px-2 py-0.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                              >
+                                적용
+                              </button>
+                            </div>
+                          </div>
+                        </div>
                       ) : (
                         <div className="bg-red-50 border border-red-200 rounded p-2">
                           <div className="text-red-600 text-xs font-medium">⚠️ 데이터 오류</div>
@@ -1040,7 +1140,7 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
                             총: ₩{formatPrice(priceEditForms[product.product_no].price_2nd_total)}
                           </div>
                           <div className="text-xs text-gray-500">
-                            추가: ₩{formatPrice(priceEditForms[product.product_no].additional_amount_2nd)}
+                            추가금액: ₩{formatPrice(priceEditForms[product.product_no].additional_amount_2nd)}
                           </div>
                           {/* 옵션명 미리보기 */}
                           <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded text-xs">
@@ -1083,7 +1183,7 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
                             총: ₩{formatPrice(priceEditForms[product.product_no].price_3rd_total)}
                           </div>
                           <div className="text-xs text-gray-500">
-                            추가: ₩{formatPrice(priceEditForms[product.product_no].additional_amount_3rd)}
+                            추가금액: ₩{formatPrice(priceEditForms[product.product_no].additional_amount_3rd)}
                           </div>
                           {/* 옵션명 미리보기 */}
                           <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded text-xs">
