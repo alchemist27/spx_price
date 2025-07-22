@@ -6,8 +6,8 @@ import { Toaster } from 'react-hot-toast'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Cafe24 Product Manager',
-  description: '카페24 쇼핑몰 상품 관리 시스템',
+  title: '소펙스코리아 단가관리 시스템',
+  description: '소펙스코리아 단가관리시스템',
 }
 
 export default function RootLayout({
