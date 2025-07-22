@@ -15,6 +15,8 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(true);
   const [products, setProducts] = useState<Cafe24Product[]>([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [totalExpectedProducts, setTotalExpectedProducts] = useState(0);
   const searchParams = useSearchParams();
 
   useEffect(() => {
@@ -77,8 +79,18 @@ export default function Home() {
 
   const loadProducts = async () => {
     setIsLoadingProducts(true);
+    setLoadingProgress(0);
+    setTotalExpectedProducts(0);
+    
     try {
       console.log('�� 상품 목록 로딩 시작...');
+      
+      // 먼저 총 상품 수를 가져와서 전체 진행률을 계산할 수 있도록 함
+      const countResponse = await axios.get(`/api/products?limit=1&offset=0&category=77&_t=${Date.now()}`);
+      const totalCount = countResponse.data.count || 0;
+      setTotalExpectedProducts(totalCount);
+      console.log(`📊 총 예상 상품 수: ${totalCount}개`);
+      
       const allProducts: Cafe24Product[] = [];
       const limit = 100;
       let offset = 0;
@@ -98,6 +110,10 @@ export default function Home() {
           allProducts.push(...products);
           offset += limit;
           
+          // 진행률 업데이트
+          const progress = totalCount > 0 ? Math.min((allProducts.length / totalCount) * 100, 100) : 0;
+          setLoadingProgress(Math.round(progress));
+          
           // 더 가져올 상품이 있는지 확인 (100개 미만이면 마지막 페이지)
           hasMore = products.length === limit;
           
@@ -112,6 +128,7 @@ export default function Home() {
       }
       
       setProducts(allProducts);
+      setLoadingProgress(100);
       console.log(`✅ 총 ${allProducts.length}개 상품 로딩 완료 (카테고리 77, variants 포함)`);
     } catch (error) {
       console.error('❌ 상품 목록 조회 실패:', error);
@@ -185,11 +202,32 @@ export default function Home() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {isLoadingProducts ? (
-          <div className="flex flex-col items-center justify-center py-12 space-y-4">
+          <div className="flex flex-col items-center justify-center py-12 space-y-6">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-            <div className="text-center">
+            <div className="text-center space-y-4">
               <p className="text-gray-600 font-medium">상품 목록을 불러오는 중...</p>
-              <p className="text-sm text-gray-500 mt-1">
+              
+              {/* Progress Bar */}
+              <div className="w-80 mx-auto">
+                <div className="flex justify-between text-sm text-gray-500 mb-2">
+                  <span>진행률</span>
+                  <span>{loadingProgress}%</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-3">
+                  <div 
+                    className="bg-blue-600 h-3 rounded-full transition-all duration-300 ease-out"
+                    style={{ width: `${loadingProgress}%` }}
+                  ></div>
+                </div>
+                {totalExpectedProducts > 0 && (
+                  <div className="flex justify-between text-xs text-gray-400 mt-2">
+                    <span>로딩된 상품: {Math.round(totalExpectedProducts * loadingProgress / 100)}개</span>
+                    <span>전체: {totalExpectedProducts}개</span>
+                  </div>
+                )}
+              </div>
+              
+              <p className="text-sm text-gray-500">
                 100개씩 페이지별로 조회하고 있습니다. 잠시만 기다려주세요.
               </p>
             </div>
