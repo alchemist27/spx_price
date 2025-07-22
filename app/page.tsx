@@ -6,12 +6,14 @@ import { getToken, testFirestoreWrite } from '@/lib/firebase';
 import { cafe24API, Cafe24Product } from '@/lib/cafe24-api';
 import LoginForm from '@/components/LoginForm';
 import ProductTable from '@/components/ProductTable';
+import AdminLogin from '@/components/AdminLogin';
 import toast from 'react-hot-toast';
 import { LogOut, RefreshCw } from 'lucide-react';
 import axios from 'axios'; // Added axios import
 
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [products, setProducts] = useState<Cafe24Product[]>([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(false);
@@ -20,9 +22,16 @@ export default function Home() {
   const searchParams = useSearchParams();
 
   useEffect(() => {
-    // Firestore 쓰기 테스트
-    testFirestoreWrite();
-    checkAuthStatus();
+    // 관리자 로그인 상태 확인
+    const adminAuth = localStorage.getItem('admin_auth');
+    if (adminAuth === 'true') {
+      setIsAdminAuthenticated(true);
+      // Firestore 쓰기 테스트
+      testFirestoreWrite();
+      checkAuthStatus();
+    } else {
+      setIsLoading(false);
+    }
     
     // 🧪 개발자 도구에서 테스트 함수 사용 가능하도록 설정
     if (typeof window !== 'undefined') {
@@ -167,8 +176,17 @@ export default function Home() {
 
   const handleLogout = async () => {
     setIsAuthenticated(false);
+    setIsAdminAuthenticated(false);
     setProducts([]);
+    localStorage.removeItem('admin_auth');
     toast.success('로그아웃되었습니다.');
+  };
+
+  const handleAdminLogin = () => {
+    setIsAdminAuthenticated(true);
+    // Firestore 쓰기 테스트
+    testFirestoreWrite();
+    checkAuthStatus();
   };
 
   const handleLoginSuccess = () => {
@@ -183,6 +201,12 @@ export default function Home() {
     );
   }
 
+  // 관리자 로그인이 필요한 경우
+  if (!isAdminAuthenticated) {
+    return <AdminLogin onLoginSuccess={handleAdminLogin} />;
+  }
+
+  // Cafe24 로그인이 필요한 경우
   if (!isAuthenticated) {
     return <LoginForm onLoginSuccess={handleLoginSuccess} />;
   }
