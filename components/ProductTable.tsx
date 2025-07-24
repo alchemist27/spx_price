@@ -418,14 +418,43 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
     let successCount = 0;
     let errorCount = 0;
 
-    // 모든 상품에 대해 가격 업데이트 허용
-    const allowedProducts = sortedProducts.filter(product => priceEditForms[product.product_no]);
+    // 실제로 가격이 변경된 상품만 필터링
+    const getChangedProducts = () => {
+      return sortedProducts.filter(product => {
+        const formData = priceEditForms[product.product_no];
+        if (!formData) return false;
+
+        // 현재 상품의 원본 가격 정보 계산
+        const variantPrices = calculateVariantPrices(product);
+        const originalSupplyPrice = parseFloat(product.supply_price);
+        const originalUnitPrice2nd = variantPrices.unitPrice2nd || originalSupplyPrice;
+        const originalUnitPrice3rd = variantPrices.unitPrice3rd || originalSupplyPrice;
+
+        // 폼의 가격 정보
+        const formSupplyPrice = parseFloat(formData.supply_price.replace(/,/g, '')) || 0;
+        const formUnitPrice2nd = parseFloat(formData.unit_price_2nd.replace(/,/g, '')) || 0;
+        const formUnitPrice3rd = parseFloat(formData.unit_price_3rd.replace(/,/g, '')) || 0;
+
+        // 가격이 변경되었는지 확인 (소수점 2자리까지 비교)
+        const supplyPriceChanged = Math.abs(originalSupplyPrice - formSupplyPrice) > 0.01;
+        const unitPrice2ndChanged = Math.abs(originalUnitPrice2nd - formUnitPrice2nd) > 0.01;
+        const unitPrice3rdChanged = Math.abs(originalUnitPrice3rd - formUnitPrice3rd) > 0.01;
+
+        return supplyPriceChanged || unitPrice2ndChanged || unitPrice3rdChanged;
+      });
+    };
+
+    const allowedProducts = getChangedProducts();
     
     if (allowedProducts.length === 0) {
-      toast.error('가격 변경할 상품이 없습니다. 편집 모드에서 가격을 입력해주세요.');
+      toast.error('변경된 가격이 없습니다. 가격을 수정한 후 다시 시도해주세요.');
       setIsLoading(false);
       return;
     }
+
+    // 변경된 상품 목록 로그 (디버깅용)
+    const changedProductCodes = allowedProducts.map(p => p.product_code).join(', ');
+    console.log(`변경된 상품: ${changedProductCodes}`);
 
     // 각 상품당 4단계 (기본가격, 옵션명, 2차variant, 3차variant) = 총 steps 계산
     const stepsPerProduct = 4;
@@ -434,7 +463,7 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
     setTotalProducts(allowedProducts.length);
     setCompletedProducts(0);
     
-    console.log(`시작: ${allowedProducts.length}개 상품 가격 업데이트`);
+    console.log(`시작: ${allowedProducts.length}개 상품 가격 업데이트 (변경된 상품만)`);
 
     try {
       let currentStep = 0;
@@ -479,20 +508,35 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
             supply_price: cleanSupplyPrice
           });
           
+          // 중단 요청 확인 (기본가격 업데이트 후)
+          if (shouldCancelSave) {
+            console.log(`중단됨: 기본가격 업데이트 후 중단 요청`);
+            break;
+          }
+          
           // 진행률 업데이트 (1/4 단계 완료)
           currentStep++;
           const progress = Math.round((currentStep / totalSteps) * 100);
           setSaveProgress(progress);
-          // API 호출 간격 조절 (1초 대기)
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          // API 호출 간격 조절 (1초 대기, 중단 가능)
+          for (let i = 0; i < 10; i++) {
+            if (shouldCancelSave) break;
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
 
           // 5-2) 기존 옵션 정보 조회 후 옵션명 업데이트
           const productDetail = await cafe24API.getProductDetail(product.product_no);
+          
+          // 중단 요청 확인 (옵션 조회 후)
+          if (shouldCancelSave) {
+            console.log(`중단됨: 옵션 조회 후 중단 요청`);
+            break;
+          }
+          
           const optionsInfo = productDetail.product?.options;
           const currentOptions = optionsInfo?.options || [];
           
           // API 호출 간격 조절 (1초 대기)
-  
           await new Promise(resolve => setTimeout(resolve, 1000));
 
           // original_options 구성 (기존 옵션 구조 완전 복사)
@@ -529,13 +573,22 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
 
           await cafe24API.updateProductOptions(product.product_no, optionsData);
           
+          // 중단 요청 확인 (옵션 업데이트 후)
+          if (shouldCancelSave) {
+            console.log(`중단됨: 옵션 업데이트 후 중단 요청`);
+            break;
+          }
+          
           // 진행률 업데이트 (2/4 단계 완료)
           currentStep++;
           const progress2 = Math.round((currentStep / totalSteps) * 100);
           setSaveProgress(progress2);
           
-          // API 호출 간격 조절 (1초 대기)
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          // API 호출 간격 조절 (1초 대기, 중단 가능)
+          for (let i = 0; i < 10; i++) {
+            if (shouldCancelSave) break;
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
 
           // 5-3) Variant 추가금액 업데이트
           if (product.variants && product.variants.length >= 2) {
@@ -551,13 +604,22 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
                 additional_amount: cleanAdditionalAmount2nd
               });
               
+              // 중단 요청 확인 (2차 variant 업데이트 후)
+              if (shouldCancelSave) {
+                console.log(`중단됨: 2차 variant 업데이트 후 중단 요청`);
+                break;
+              }
+              
               // 진행률 업데이트 (3/4 단계 완료)
               currentStep++;
               const progress3 = Math.round((currentStep / totalSteps) * 100);
               setSaveProgress(progress3);
               
-              // API 호출 간격 조절 (1초 대기)
-              await new Promise(resolve => setTimeout(resolve, 1000));
+              // API 호출 간격 조절 (1초 대기, 중단 가능)
+              for (let i = 0; i < 10; i++) {
+                if (shouldCancelSave) break;
+                await new Promise(resolve => setTimeout(resolve, 100));
+              }
             }
 
             // 3차 variant (20kg 또는 15kg) 업데이트
@@ -566,6 +628,12 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
               await cafe24API.updateProductVariant(product.product_no, variant3rd.variant_code, {
                 additional_amount: cleanAdditionalAmount3rd
               });
+              
+              // 중단 요청 확인 (3차 variant 업데이트 후)
+              if (shouldCancelSave) {
+                console.log(`중단됨: 3차 variant 업데이트 후 중단 요청`);
+                break;
+              }
               
               // 진행률 업데이트 (4/4 단계 완료)
               currentStep++;
