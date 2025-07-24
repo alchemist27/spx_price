@@ -62,30 +62,20 @@ export async function GET(
   try {
     const productId = params.id;
     const searchParams = request.nextUrl.searchParams;
-    const embed = searchParams.get('embed'); // embed 파라미터 추가
+    const embed = searchParams.get('embed');
     
-    console.log('🔍 단일 상품 조회 API 호출 시작:', { productId, embed });
-    
-    // 유효한 토큰 확인 (만료 시 자동 갱신)
     const accessToken = await getValidToken();
     if (!accessToken) {
-      console.log('❌ 유효한 토큰이 없음 (갱신 실패 포함)');
       return NextResponse.json(
         { error: 'No valid token available' },
         { status: 401 }
       );
     }
-
-    console.log('✅ 유효한 토큰으로 카페24 단일 상품 API 호출');
     
-    // 카페24 API 호출 URL 구성
     let apiUrl = `${CAFE24_BASE_URL}/admin/products/${productId}`;
     if (embed) {
       apiUrl += `?embed=${embed}`;
-      console.log('🧪 Embed 파라미터 추가:', embed);
     }
-    
-    console.log('🔗 API URL:', apiUrl);
     
     const response = await axios.get(apiUrl, {
       headers: {
@@ -93,13 +83,6 @@ export async function GET(
         'Content-Type': 'application/json',
         'X-Cafe24-Api-Version': '2025-06-01',
       },
-    });
-
-    console.log('✅ 카페24 단일 상품 API 응답 성공:', {
-      status: response.status,
-      productId,
-      hasOptions: embed === 'options' ? !!response.data.product?.options : 'N/A',
-      embed
     });
 
     return NextResponse.json(response.data);

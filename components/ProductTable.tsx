@@ -510,7 +510,6 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
           
           // 중단 요청 확인 (기본가격 업데이트 후)
           if (shouldCancelSave) {
-            console.log(`중단됨: 기본가격 업데이트 후 중단 요청`);
             break;
           }
           
@@ -529,7 +528,6 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
           
           // 중단 요청 확인 (옵션 조회 후)
           if (shouldCancelSave) {
-            console.log(`중단됨: 옵션 조회 후 중단 요청`);
             break;
           }
           
@@ -575,7 +573,6 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
           
           // 중단 요청 확인 (옵션 업데이트 후)
           if (shouldCancelSave) {
-            console.log(`중단됨: 옵션 업데이트 후 중단 요청`);
             break;
           }
           
@@ -606,7 +603,6 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
               
               // 중단 요청 확인 (2차 variant 업데이트 후)
               if (shouldCancelSave) {
-                console.log(`중단됨: 2차 variant 업데이트 후 중단 요청`);
                 break;
               }
               
@@ -631,7 +627,6 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
               
               // 중단 요청 확인 (3차 variant 업데이트 후)
               if (shouldCancelSave) {
-                console.log(`중단됨: 3차 variant 업데이트 후 중단 요청`);
                 break;
               }
               
@@ -667,13 +662,12 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
               // 결과 처리
         if (shouldCancelSave) {
           toast(`가격 저장이 중단되었습니다. (성공: ${successCount}개, 실패: ${errorCount}개)`);
-          console.log(`중단: 성공 ${successCount}개, 실패 ${errorCount}개`);
         } else if (successCount > 0) {
           toast.success(`${successCount}개 상품 가격이 업데이트되었습니다.`);
           if (errorCount > 0) {
             toast.error(`${errorCount}개 상품 업데이트에 실패했습니다.`);
           }
-          console.log(`완료: 성공 ${successCount}개, 실패 ${errorCount}개`);
+          console.log(`완료: ${successCount}개 성공, ${errorCount}개 실패`);
         
         // 업데이트된 데이터 반영을 위한 안내 메시지
         toast('업데이트된 가격을 반영하는 중입니다... (2초)', {

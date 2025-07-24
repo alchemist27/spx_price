@@ -57,41 +57,27 @@ async function getValidToken(): Promise<string | null> {
 
 export async function GET(request: NextRequest) {
   try {
-    console.log('📦 상품 목록 API 호출 시작');
-    
-    // URL 파라미터 추출 (request.nextUrl.searchParams 사용으로 Dynamic Server Usage 방지)
     const searchParams = request.nextUrl.searchParams;
-    const limit = Math.min(parseInt(searchParams.get('limit') || '100'), 100); // 최대 100개
+    const limit = Math.min(parseInt(searchParams.get('limit') || '100'), 100);
     const offset = parseInt(searchParams.get('offset') || '0');
-    const embed = searchParams.get('embed'); // embed 파라미터 추가
-    const category = searchParams.get('category'); // 카테고리 필터 추가
+    const embed = searchParams.get('embed');
+    const category = searchParams.get('category');
     
-    console.log('📋 페이지네이션 파라미터:', { limit, offset, embed, category });
-    
-    // 유효한 토큰 확인 (만료 시 자동 갱신)
     const accessToken = await getValidToken();
     if (!accessToken) {
-      console.log('❌ 유효한 토큰이 없음 (갱신 실패 포함)');
       return NextResponse.json(
         { error: 'No valid token available' },
         { status: 401 }
       );
     }
-
-    console.log('✅ 유효한 토큰으로 카페24 API 호출');
     
-    // 카페24 API 호출 URL 구성
     let apiUrl = `${CAFE24_BASE_URL}/admin/products?limit=${limit}&offset=${offset}`;
     if (embed) {
       apiUrl += `&embed=${embed}`;
-      console.log('🧪 Embed 파라미터 추가:', embed);
     }
     if (category) {
       apiUrl += `&category=${category}`;
-      console.log('🏷️ 카테고리 필터 추가:', category);
     }
-    
-    console.log('🔗 API URL:', apiUrl);
     
     const response = await axios.get(apiUrl, {
       headers: {
@@ -101,28 +87,12 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    console.log('✅ 카페24 API 응답 성공:', {
-      status: response.status,
-      productCount: response.data.products?.length || 0,
-      hasVariants: embed === 'variants' ? response.data.products?.some((p: any) => p.variants) : 'N/A',
-      limit,
-      offset,
-      embed,
-      category
-    });
-
     return NextResponse.json(response.data);
 
   } catch (error) {
-    console.error('❌ 상품 목록 API 에러:', error);
+    console.error('상품 API 에러:', error);
     
     if (axios.isAxiosError(error)) {
-      console.error('API 에러 상세:', {
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        data: error.response?.data
-      });
-      
       return NextResponse.json(
         { 
           error: 'Failed to fetch products', 
