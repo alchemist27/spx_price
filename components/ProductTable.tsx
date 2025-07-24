@@ -57,99 +57,12 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
   // 가격 저장 진행률 상태
   const [saveProgress, setSaveProgress] = useState(0);
   const [totalSaveSteps, setTotalSaveSteps] = useState(0);
+  const [completedProducts, setCompletedProducts] = useState(0);
+  const [totalProducts, setTotalProducts] = useState(0);
   const [saveStartTime, setSaveStartTime] = useState<Date | null>(null);
   const [shouldCancelSave, setShouldCancelSave] = useState(false);
 
-  // 🔍 상품 데이터 변경 시 디버깅 정보 출력
-  React.useEffect(() => {
-    if (products.length > 0) {
-      console.log('=== ProductTable 노출 그룹 디버깅 ===');
-      console.log('총 상품 수:', products.length);
-      
-      // 노출 그룹 통계 수집
-      const groupStats = new Map<string, number>();
-      const limitTypeStats = new Map<string, number>();
-      
-      products.forEach(product => {
-        // exposure_limit_type 통계
-        const limitType = product.exposure_limit_type || 'undefined';
-        limitTypeStats.set(limitType, (limitTypeStats.get(limitType) || 0) + 1);
-        
-        // exposure_group_list 통계
-        if (product.exposure_group_list && product.exposure_group_list.length > 0) {
-          product.exposure_group_list.forEach(groupId => {
-            groupStats.set(groupId.toString(), (groupStats.get(groupId.toString()) || 0) + 1);
-          });
-        }
-      });
-      
-      console.log('노출 제한 타입별 상품 수:', Object.fromEntries(limitTypeStats));
-      console.log('실제 노출 그룹별 상품 수:', Object.fromEntries(groupStats));
-      
-      // 실제 존재하는 그룹 번호들
-      const actualGroups = Array.from(groupStats.keys()).sort((a, b) => parseInt(a) - parseInt(b));
-      console.log('실제 존재하는 노출 그룹:', actualGroups);
-      
-      // 몇 개 상품 샘플 출력
-      const samples = products.slice(0, 5).map(p => ({
-        product_no: p.product_no,
-        product_name: p.product_name.substring(0, 20) + '...',
-        exposure_limit_type: p.exposure_limit_type,
-        exposure_group_list: p.exposure_group_list
-      }));
-      console.log('상품 샘플:', samples);
-      
-      // 🧪 상품 2개 옵션명 디버깅
-      console.log('\n=== 상품 옵션명 디버깅 (상위 2개 상품) ===');
-      const testProducts = products.slice(0, 2);
-      
-      testProducts.forEach((product, index) => {
-        console.log(`\n상품 ${index + 1}: ${product.product_code} - ${product.product_name}`);
-        console.log(`   공급가: ₩${formatPrice(product.supply_price)}`);
-        
-        // variant 기반 가격 계산
-        const variantPrices = calculateVariantPrices(product);
-        
-        // 특정 상품코드들은 1kg, 4kg, 15kg 단위 사용
-        const specialProductCodes = ['P00000PN', 'P0000BIB', 'P0000BHX', 'P0000BHW', 'P0000BHV', 'P00000YR'];
-        const isSpecialProduct = specialProductCodes.includes(product.product_code);
-        const secondUnit = isSpecialProduct ? 4 : 5;
-        const thirdUnit = isSpecialProduct ? 15 : 20;
-        
-        // 현재 옵션명 형태로 표시 (실제 카페24 형식: '1kg(21600원)')
-        const option1kg = `1kg(${Math.round(variantPrices.unitPrice1kg)}원)`;
-        const option2nd = `${secondUnit}kg(${Math.round(variantPrices.unitPrice2nd || 0)}원)`;
-        const option3rd = `${thirdUnit}kg(${Math.round(variantPrices.unitPrice3rd || 0)}원)`;
-        
-        console.log(`   현재 옵션명 1: "${option1kg}"`);
-        console.log(`   현재 옵션명 2: "${option2nd}"`);
-        console.log(`   현재 옵션명 3: "${option3rd}"`);
-        
-        // 가격 세부 정보
-        console.log(`   가격 세부:`);
-        console.log(`      - 1kg: ₩${formatPrice(variantPrices.price1kg.toString())} (₩${formatPrice(variantPrices.unitPrice1kg.toString())}/kg)`);
-        if (variantPrices.price2nd) {
-          console.log(`      - ${secondUnit}kg: ₩${formatPrice(variantPrices.price2nd.toString())} (₩${formatPrice(variantPrices.unitPrice2nd!.toString())}/kg)`);
-        }
-        if (variantPrices.price3rd) {
-          console.log(`      - ${thirdUnit}kg: ₩${formatPrice(variantPrices.price3rd.toString())} (₩${formatPrice(variantPrices.unitPrice3rd!.toString())}/kg)`);
-        }
-        
-        // variant 정보
-        if (product.variants && product.variants.length > 0) {
-          console.log(`   Variants 정보:`);
-          product.variants.forEach((variant, vIndex) => {
-            console.log(`      - Variant ${vIndex + 1}: code=${variant.variant_code}, additional=${variant.additional_amount}`);
-          });
-        } else {
-          console.log(`   Variants: 없음`);
-        }
-      });
-      
-      console.log('\n=== 옵션명 디버깅 끝 ===');
-      console.log('=== 디버깅 정보 끝 ===');
-    }
-  }, [products]);
+  // 상품 데이터 로딩 완료 (로그 제거로 성능 최적화)
 
   // 상품에서 노출 그룹 추출 및 탭 생성
   const availableTabs = useMemo(() => {
@@ -176,7 +89,6 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
       return parseInt(a) - parseInt(b);
     });
     
-    console.log('생성된 탭들:', tabs);
     return tabs;
   }, [products]);
 
@@ -282,31 +194,7 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
           }
         });
         
-        if (hasNewProducts) {
-          console.log(`새로운 상품 ${sortedProducts.filter(p => !prev[p.product_no]).length}개의 폼 데이터 생성`);
-          
-          // 🧪 새로 생성된 폼 데이터의 옵션명 미리보기 (첫 2개 상품)
-          const newProducts = sortedProducts.filter(p => !prev[p.product_no]).slice(0, 2);
-          if (newProducts.length > 0) {
-            console.log('\n=== 새로 생성된 폼 데이터 옵션명 미리보기 ===');
-            newProducts.forEach((product, index) => {
-              const formData = newForms[product.product_no];
-              if (formData) {
-                const specialProductCodes = ['P00000PN', 'P0000BIB', 'P0000BHX', 'P0000BHW', 'P0000BHV', 'P00000YR'];
-                const isSpecialProduct = specialProductCodes.includes(product.product_code);
-                const secondUnit = isSpecialProduct ? 4 : 5;
-                const thirdUnit = isSpecialProduct ? 15 : 20;
-                
-                const option1kg = `1kg(${Math.round(parseFloat(formData.price_1kg))}원)`;
-                const option2nd = `${secondUnit}kg(${Math.round(parseFloat(formData.unit_price_2nd))}원)`;
-                const option3rd = `${thirdUnit}kg(${Math.round(parseFloat(formData.unit_price_3rd))}원)`;
-                
-                console.log(`${product.product_code}: "${option1kg}", "${option2nd}", "${option3rd}"`);
-              }
-            });
-            console.log('=== 옵션명 미리보기 끝 ===\n');
-          }
-        }
+        // 새로운 상품의 폼 데이터 생성 완료
         
         return hasNewProducts ? newForms : prev;
       });
@@ -383,21 +271,6 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
         // 현재 단가들 계산
         const unitPrice2nd = variantPrices.unitPrice2nd || supplyPrice;
         const unitPrice3rd = variantPrices.unitPrice3rd || supplyPrice;
-        
-        // 디버깅: 공급가 확인
-        console.log(`상품 ${product.product_code} 공급가:`, product.supply_price, typeof product.supply_price);
-        
-        // 🧪 옵션명 생성 미리보기 (첫 2개 상품만)
-        if (sortedProducts.indexOf(product) < 2) {
-                          const option1kg = `1kg(${Math.round(supplyPrice)}원)`;
-                const option2nd = `${secondUnit}kg(${Math.round(unitPrice2nd)}원)`;
-                const option3rd = `${thirdUnit}kg(${Math.round(unitPrice3rd)}원)`;
-          
-          console.log(`${product.product_code} 예상 옵션명:`);
-          console.log(`   "${option1kg}"`);
-          console.log(`   "${option2nd}"`);
-          console.log(`   "${option3rd}"`);
-        }
         
         initialForms[product.product_no] = {
           supply_price: product.supply_price || '0',
@@ -533,7 +406,7 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
   // 가격 저장 중단 함수
   const cancelSave = () => {
     setShouldCancelSave(true);
-    console.log('사용자가 가격 저장을 중단했습니다.');
+    console.log('중단 요청됨');
   };
 
   // 전체 가격 저장
@@ -558,25 +431,26 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
     const stepsPerProduct = 4;
     const totalSteps = allowedProducts.length * stepsPerProduct;
     setTotalSaveSteps(totalSteps);
+    setTotalProducts(allowedProducts.length);
+    setCompletedProducts(0);
     
-    console.log(`=== 가격 업데이트 시작: ${allowedProducts.length}개 상품, ${totalSteps}단계 ===`);
+    console.log(`시작: ${allowedProducts.length}개 상품 가격 업데이트`);
 
     try {
       let currentStep = 0;
       
       for (const product of allowedProducts) {
-        // 중단 요청 확인
-        if (shouldCancelSave) {
-          console.log('가격 저장이 사용자에 의해 중단되었습니다.');
-          break;
-        }
-
         const formData = priceEditForms[product.product_no];
         if (!formData) continue;
 
-        // 상품 처리 시작 로그 (간단히)
+        // 상품 처리 시작 (로그 최소화)
         const productIndex = allowedProducts.indexOf(product) + 1;
-        console.log(`[${productIndex}/${allowedProducts.length}] ${product.product_code} 처리 시작`);
+        
+        // 중단 요청 확인
+        if (shouldCancelSave) {
+          console.log(`중단됨: ${productIndex - 1}개 완료`);
+          break;
+        }
 
         try {
           // 가격 데이터 정리 (쉼표 제거, 소수점 형식 보장)
@@ -617,11 +491,8 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
           const optionsInfo = productDetail.product?.options;
           const currentOptions = optionsInfo?.options || [];
           
-          console.log(`현재 옵션 정보:`, optionsInfo);
-          console.log(`현재 옵션 배열:`, currentOptions);
-          
           // API 호출 간격 조절 (1초 대기)
-          console.log(`⏳ API 호출 제한 방지를 위해 1초 대기...`);
+  
           await new Promise(resolve => setTimeout(resolve, 1000));
 
           // original_options 구성 (기존 옵션 구조 완전 복사)
@@ -710,24 +581,31 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
             console.warn(`${product.product_code}: variants 데이터가 부족합니다.`);
           }
 
-          console.log(`[${productIndex}/${allowedProducts.length}] ${product.product_code} 완료 (${Math.round((currentStep / totalSteps) * 100)}%)`);
+          // 상품 완료 처리
+          setCompletedProducts(productIndex);
+          const progressPercent = Math.round((currentStep / totalSteps) * 100);
+          if (productIndex % 5 === 0 || productIndex === allowedProducts.length) {
+            console.log(`진행: ${productIndex}/${allowedProducts.length} (${progressPercent}%)`);
+          }
           successCount++;
         } catch (error) {
-          console.error(`[${productIndex}/${allowedProducts.length}] ${product.product_code} 실패:`, error instanceof Error ? error.message : error);
+          // 에러 시에도 완료된 것으로 카운트 (처리는 완료됨)
+          setCompletedProducts(productIndex);
+          console.error(`실패: ${product.product_code} -`, error instanceof Error ? error.message : error);
           errorCount++;
         }
       }
 
-      // 결과 처리
-      if (shouldCancelSave) {
-        toast(`가격 저장이 중단되었습니다. (성공: ${successCount}개, 실패: ${errorCount}개)`);
-        console.log(`=== 가격 업데이트 중단됨: 성공 ${successCount}개, 실패 ${errorCount}개 ===`);
-      } else if (successCount > 0) {
-        toast.success(`${successCount}개 상품 가격이 업데이트되었습니다.`);
-        if (errorCount > 0) {
-          toast.error(`${errorCount}개 상품 업데이트에 실패했습니다.`);
-        }
-        console.log(`=== 가격 업데이트 완료: 성공 ${successCount}개, 실패 ${errorCount}개 ===`);
+              // 결과 처리
+        if (shouldCancelSave) {
+          toast(`가격 저장이 중단되었습니다. (성공: ${successCount}개, 실패: ${errorCount}개)`);
+          console.log(`중단: 성공 ${successCount}개, 실패 ${errorCount}개`);
+        } else if (successCount > 0) {
+          toast.success(`${successCount}개 상품 가격이 업데이트되었습니다.`);
+          if (errorCount > 0) {
+            toast.error(`${errorCount}개 상품 업데이트에 실패했습니다.`);
+          }
+          console.log(`완료: 성공 ${successCount}개, 실패 ${errorCount}개`);
         
         // 업데이트된 데이터 반영을 위한 안내 메시지
         toast('업데이트된 가격을 반영하는 중입니다... (2초)', {
@@ -751,6 +629,8 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
     } finally {
       setIsLoading(false);
       setSaveProgress(0); // 진행률 초기화
+      setCompletedProducts(0); // 완료 상품 수 초기화
+      setTotalProducts(0); // 총 상품 수 초기화
       setSaveStartTime(null); // 시작 시간 초기화
       setShouldCancelSave(false); // 중단 플래그 초기화
     }
@@ -1336,11 +1216,11 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
                 </div>
               </div>
               
-              {/* 단계 정보 */}
+              {/* 상품 처리 정보 */}
               <div className="mb-4 text-sm text-gray-600">
                 <div className="flex justify-between mb-1">
-                  <span>처리 단계</span>
-                  <span>{Math.ceil((saveProgress / 100) * totalSaveSteps)} / {totalSaveSteps}</span>
+                  <span>처리된 상품</span>
+                  <span>{completedProducts} / {totalProducts}</span>
                 </div>
               </div>
               
