@@ -38,14 +38,12 @@ export default function Home() {
       (window as any).testVariants = async () => {
         try {
           const result = await cafe24API.testProductsWithVariants();
-          console.log('🧪 테스트 결과:', result);
           return result;
         } catch (error) {
-          console.error('🧪 테스트 에러:', error);
+          console.error('테스트 에러:', error);
           return null;
         }
       };
-      console.log('🔧 개발자 도구에서 testVariants() 함수를 사용할 수 있습니다.');
     }
   }, []);
 
@@ -64,21 +62,13 @@ export default function Home() {
 
   const checkAuthStatus = async () => {
     try {
-      console.log('🔍 인증 상태 확인 중...');
       const token = await getToken();
       if (token) {
-        console.log('✅ 저장된 토큰 발견:', { 
-          hasAccessToken: !!token.access_token,
-          expiresAt: new Date(token.expires_at).toISOString(),
-          isExpired: Date.now() >= token.expires_at
-        });
         setIsAuthenticated(true);
         loadProducts();
-      } else {
-        console.log('❌ 저장된 토큰 없음');
       }
     } catch (error) {
-      console.error('❌ 인증 상태 확인 실패:', error);
+      console.error('인증 확인 실패:', error);
     } finally {
       setIsLoading(false);
     }
@@ -92,69 +82,47 @@ export default function Home() {
     setTotalExpectedProducts(0);
     
     try {
-      console.log('�� 상품 목록 로딩 시작...');
-      
-      // 동적으로 총 상품 수를 파악하며 진행률 계산
-      let totalEstimated = 0;
+      console.log('상품 로딩 시작');
       
       const allProducts: Cafe24Product[] = [];
       const limit = 100;
       let offset = 0;
       let hasMore = true;
+      let totalEstimated = 0;
 
       while (hasMore) {
-        console.log(`📄 페이지 ${Math.floor(offset / limit) + 1} 조회 중... (offset: ${offset}, limit: ${limit})`);
-        
-        // 카테고리 77번과 variants 포함하여 조회 (캐시 방지)
         const timestamp = Date.now();
         const response = await axios.get(`/api/products?limit=${limit}&offset=${offset}&embed=variants&category=77&_t=${timestamp}`);
         const products = response.data.products || [];
-        
-        console.log(`✅ ${products.length}개 상품 조회 완료 (카테고리 77, variants 포함)`);
         
         if (products.length > 0) {
           allProducts.push(...products);
           offset += limit;
           
-          // 동적으로 총 상품 수 예상 및 진행률 업데이트
           const pageNumber = Math.floor((offset - limit) / limit) + 1;
           
+          // 총 상품 수 예상 업데이트 (로그 최소화)
           if (pageNumber === 1) {
-            if (products.length < limit) {
-              // 첫 페이지가 100개 미만이면 그것이 총 개수
-              totalEstimated = products.length;
-            } else {
-              // 첫 페이지가 100개면 최소 200개는 있을 것으로 예상
-              totalEstimated = Math.max(200, products.length * 3); // 보수적으로 3배 예상
-            }
+            totalEstimated = products.length < limit ? products.length : products.length * 3;
             setTotalExpectedProducts(totalEstimated);
-            console.log(`📊 예상 총 상품 수: ${totalEstimated}개 (페이지 ${pageNumber} 기준)`);
           } else if (products.length < limit) {
-            // 마지막 페이지에 도달하면 정확한 총 개수 확정
             totalEstimated = allProducts.length;
             setTotalExpectedProducts(totalEstimated);
-            console.log(`📊 정확한 총 상품 수 확정: ${totalEstimated}개`);
           } else if (pageNumber > 1 && totalEstimated < allProducts.length * 1.5) {
-            // 예상보다 더 많은 상품이 있으면 예상치 증가
-            totalEstimated = Math.max(totalEstimated, allProducts.length * 2);
+            totalEstimated = allProducts.length * 2;
             setTotalExpectedProducts(totalEstimated);
-            console.log(`📊 예상 총 상품 수 재조정: ${totalEstimated}개 (페이지 ${pageNumber} 기준)`);
           }
           
           // 진행률 계산
           const progress = totalEstimated > 0 ? 
-            Math.min((allProducts.length / totalEstimated) * 100, 99) : // 최대 99%까지만 (완료는 100%)
-            Math.min(pageNumber * 10, 90); // fallback: 페이지당 10%씩, 최대 90%
+            Math.min((allProducts.length / totalEstimated) * 100, 99) :
+            Math.min(pageNumber * 10, 90);
           
           setLoadingProgress(Math.round(progress));
-          console.log(`📊 진행률: ${Math.round(progress)}% (${allProducts.length}/${totalEstimated} 상품)`);
-          
-          // 더 가져올 상품이 있는지 확인 (100개 미만이면 마지막 페이지)
           hasMore = products.length === limit;
           
-          // API 호출 간격 조절 (200ms 대기)
+          // API 호출 간격
           if (hasMore) {
-            console.log('⏳ 다음 페이지 호출 전 200ms 대기...');
             await new Promise(resolve => setTimeout(resolve, 200));
           }
         } else {
@@ -164,10 +132,10 @@ export default function Home() {
       
       setProducts(allProducts);
       setLoadingProgress(100);
-      setTotalExpectedProducts(allProducts.length); // 최종 정확한 개수로 설정
-      console.log(`✅ 총 ${allProducts.length}개 상품 로딩 완료 (카테고리 77, variants 포함)`);
+      setTotalExpectedProducts(allProducts.length);
+      console.log(`상품 로딩 완료: ${allProducts.length}개`);
     } catch (error) {
-      console.error('❌ 상품 목록 조회 실패:', error);
+      console.error('상품 로딩 실패:', error);
       toast.error('상품 목록을 불러오는데 실패했습니다.');
     } finally {
       setIsLoadingProducts(false);

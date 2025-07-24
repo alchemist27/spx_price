@@ -44,27 +44,15 @@ export const saveToken = async (token: Cafe24Token) => {
 
 export const getToken = async (): Promise<Cafe24Token | null> => {
   try {
-    console.log('🔍 Firestore에서 토큰 조회 시도...');
     const docRef = doc(db, 'tokens', 'cafe24');
     const docSnap = await getDoc(docRef);
     
     if (docSnap.exists()) {
-      const tokenData = docSnap.data() as Cafe24Token;
-      console.log('✅ 토큰 조회 성공:', {
-        hasAccessToken: !!tokenData.access_token,
-        expiresAt: new Date(tokenData.expires_at).toISOString(),
-        isExpired: Date.now() >= tokenData.expires_at
-      });
-      return tokenData;
-    } else {
-      console.log('❌ 토큰 문서가 존재하지 않음');
+      return docSnap.data() as Cafe24Token;
     }
     return null;
   } catch (error) {
-    console.error('❌ 토큰 조회 에러:', error);
-    if (error instanceof Error) {
-      console.error('에러 메시지:', error.message);
-    }
+    console.error('토큰 조회 에러:', error);
     return null;
   }
 };
