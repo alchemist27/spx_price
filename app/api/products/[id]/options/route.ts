@@ -64,7 +64,6 @@ export async function PUT(
     const optionsData = await request.json();
     
     console.log('🔄 상품 옵션 업데이트 API 호출 시작:', { productId });
-    console.log('📝 옵션 데이터:', JSON.stringify(optionsData, null, 2));
     
     // 유효한 토큰 확인 (만료 시 자동 갱신)
     const accessToken = await getValidToken();
