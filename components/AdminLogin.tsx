@@ -137,7 +137,7 @@ export default function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
         {/* 푸터 정보 */}
         <div className="mt-8 text-center">
           <p className="text-xs text-gray-500">
-            © 2024 SOPEX Korea. 상품 관리 시스템
+            © SOPEX Korea. 단가 관리 시스템
           </p>
         </div>
       </div>

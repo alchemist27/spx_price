@@ -57,12 +57,13 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
   // 가격 저장 진행률 상태
   const [saveProgress, setSaveProgress] = useState(0);
   const [totalSaveSteps, setTotalSaveSteps] = useState(0);
+  const [saveStartTime, setSaveStartTime] = useState<Date | null>(null);
 
   // 🔍 상품 데이터 변경 시 디버깅 정보 출력
   React.useEffect(() => {
     if (products.length > 0) {
-      console.log('🔍 === ProductTable 노출 그룹 디버깅 ===');
-      console.log('📦 총 상품 수:', products.length);
+      console.log('=== ProductTable 노출 그룹 디버깅 ===');
+      console.log('총 상품 수:', products.length);
       
       // 노출 그룹 통계 수집
       const groupStats = new Map<string, number>();
@@ -81,12 +82,12 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
         }
       });
       
-      console.log('📊 노출 제한 타입별 상품 수:', Object.fromEntries(limitTypeStats));
-      console.log('📊 실제 노출 그룹별 상품 수:', Object.fromEntries(groupStats));
+      console.log('노출 제한 타입별 상품 수:', Object.fromEntries(limitTypeStats));
+      console.log('실제 노출 그룹별 상품 수:', Object.fromEntries(groupStats));
       
       // 실제 존재하는 그룹 번호들
       const actualGroups = Array.from(groupStats.keys()).sort((a, b) => parseInt(a) - parseInt(b));
-      console.log('🎯 실제 존재하는 노출 그룹:', actualGroups);
+      console.log('실제 존재하는 노출 그룹:', actualGroups);
       
       // 몇 개 상품 샘플 출력
       const samples = products.slice(0, 5).map(p => ({
@@ -95,14 +96,14 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
         exposure_limit_type: p.exposure_limit_type,
         exposure_group_list: p.exposure_group_list
       }));
-      console.log('📝 상품 샘플:', samples);
+      console.log('상품 샘플:', samples);
       
       // 🧪 상품 2개 옵션명 디버깅
-      console.log('\n🧪 === 상품 옵션명 디버깅 (상위 2개 상품) ===');
+      console.log('\n=== 상품 옵션명 디버깅 (상위 2개 상품) ===');
       const testProducts = products.slice(0, 2);
       
       testProducts.forEach((product, index) => {
-        console.log(`\n📦 상품 ${index + 1}: ${product.product_code} - ${product.product_name}`);
+        console.log(`\n상품 ${index + 1}: ${product.product_code} - ${product.product_name}`);
         console.log(`   공급가: ₩${formatPrice(product.supply_price)}`);
         
         // variant 기반 가격 계산
@@ -119,12 +120,12 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
         const option2nd = `${secondUnit}kg(${Math.round(variantPrices.unitPrice2nd || 0)}원)`;
         const option3rd = `${thirdUnit}kg(${Math.round(variantPrices.unitPrice3rd || 0)}원)`;
         
-        console.log(`   📝 현재 옵션명 1: "${option1kg}"`);
-        console.log(`   📝 현재 옵션명 2: "${option2nd}"`);
-        console.log(`   📝 현재 옵션명 3: "${option3rd}"`);
+        console.log(`   현재 옵션명 1: "${option1kg}"`);
+        console.log(`   현재 옵션명 2: "${option2nd}"`);
+        console.log(`   현재 옵션명 3: "${option3rd}"`);
         
         // 가격 세부 정보
-        console.log(`   💰 가격 세부:`);
+        console.log(`   가격 세부:`);
         console.log(`      - 1kg: ₩${formatPrice(variantPrices.price1kg.toString())} (₩${formatPrice(variantPrices.unitPrice1kg.toString())}/kg)`);
         if (variantPrices.price2nd) {
           console.log(`      - ${secondUnit}kg: ₩${formatPrice(variantPrices.price2nd.toString())} (₩${formatPrice(variantPrices.unitPrice2nd!.toString())}/kg)`);
@@ -135,17 +136,17 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
         
         // variant 정보
         if (product.variants && product.variants.length > 0) {
-          console.log(`   🔧 Variants 정보:`);
+          console.log(`   Variants 정보:`);
           product.variants.forEach((variant, vIndex) => {
             console.log(`      - Variant ${vIndex + 1}: code=${variant.variant_code}, additional=${variant.additional_amount}`);
           });
         } else {
-          console.log(`   🔧 Variants: 없음`);
+          console.log(`   Variants: 없음`);
         }
       });
       
-      console.log('\n🧪 === 옵션명 디버깅 끝 ===');
-      console.log('🔍 === 디버깅 정보 끝 ===');
+      console.log('\n=== 옵션명 디버깅 끝 ===');
+      console.log('=== 디버깅 정보 끝 ===');
     }
   }, [products]);
 
@@ -174,7 +175,7 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
       return parseInt(a) - parseInt(b);
     });
     
-    console.log('🏷️ 생성된 탭들:', tabs);
+    console.log('생성된 탭들:', tabs);
     return tabs;
   }, [products]);
 
@@ -281,12 +282,12 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
         });
         
         if (hasNewProducts) {
-          console.log(`✅ 탭 변경으로 인한 새로운 상품 ${sortedProducts.filter(p => !prev[p.product_no]).length}개의 폼 데이터 생성`);
+          console.log(`새로운 상품 ${sortedProducts.filter(p => !prev[p.product_no]).length}개의 폼 데이터 생성`);
           
           // 🧪 새로 생성된 폼 데이터의 옵션명 미리보기 (첫 2개 상품)
           const newProducts = sortedProducts.filter(p => !prev[p.product_no]).slice(0, 2);
           if (newProducts.length > 0) {
-            console.log('\n🧪 === 새로 생성된 폼 데이터 옵션명 미리보기 ===');
+            console.log('\n=== 새로 생성된 폼 데이터 옵션명 미리보기 ===');
             newProducts.forEach((product, index) => {
               const formData = newForms[product.product_no];
               if (formData) {
@@ -299,10 +300,10 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
                 const option2nd = `${secondUnit}kg(${Math.round(parseFloat(formData.unit_price_2nd))}원)`;
                 const option3rd = `${thirdUnit}kg(${Math.round(parseFloat(formData.unit_price_3rd))}원)`;
                 
-                console.log(`📦 ${product.product_code}: "${option1kg}", "${option2nd}", "${option3rd}"`);
+                console.log(`${product.product_code}: "${option1kg}", "${option2nd}", "${option3rd}"`);
               }
             });
-            console.log('🧪 === 옵션명 미리보기 끝 ===\n');
+            console.log('=== 옵션명 미리보기 끝 ===\n');
           }
         }
         
@@ -391,7 +392,7 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
                 const option2nd = `${secondUnit}kg(${Math.round(unitPrice2nd)}원)`;
                 const option3rd = `${thirdUnit}kg(${Math.round(unitPrice3rd)}원)`;
           
-          console.log(`🧪 ${product.product_code} 예상 옵션명:`);
+          console.log(`${product.product_code} 예상 옵션명:`);
           console.log(`   "${option1kg}"`);
           console.log(`   "${option2nd}"`);
           console.log(`   "${option3rd}"`);
@@ -502,7 +503,7 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
     // 폼 업데이트 (자동 계산 로직이 포함된 updatePriceForm 사용)
     updatePriceForm(productNo, fieldName, newUnitPrice.toString());
     
-    toast.success(`${actualUnit}kg 단가가 적용되었습니다: ₩${formatPrice(newUnitPrice.toString())}/kg`);
+    toast.success(`${actualUnit}kg 단가가 적용되었습니다: ${formatPrice(newUnitPrice.toString())}/kg`);
   };
 
   // 숫자 문자열에서 쉼표 제거 및 소수점 형식 보장
@@ -515,13 +516,13 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
     
     // 유효하지 않은 숫자인 경우 0으로 처리
     if (isNaN(cleanNumber) || !isFinite(cleanNumber)) {
-      console.warn(`⚠️ 유효하지 않은 가격 값: "${priceStr}" → 0.00으로 변환`);
+      console.warn(`유효하지 않은 가격 값: "${priceStr}" → 0.00으로 변환`);
       return '0.00';
     }
     
     // 음수인 경우 경고 (추가금액은 음수일 수 있으므로 허용)
     if (cleanNumber < 0) {
-      console.warn(`⚠️ 음수 가격 값: "${priceStr}" → 그대로 사용`);
+      console.warn(`음수 가격 값: "${priceStr}" → 그대로 사용`);
     }
     
     // 소수점 2자리 문자열로 변환 (카페24 API 형식)
@@ -532,15 +533,15 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
   const saveAllPrices = async () => {
     setIsLoading(true);
     setSaveProgress(0);
+    setSaveStartTime(new Date()); // 시작 시간 기록
     let successCount = 0;
     let errorCount = 0;
 
-    // 🔒 테스트 안전장치: P0000BOI 상품만 허용
-    const TEST_PRODUCT_CODE = 'P0000BOI';
-    const allowedProducts = sortedProducts.filter(product => product.product_code === TEST_PRODUCT_CODE);
+    // 모든 상품에 대해 가격 업데이트 허용
+    const allowedProducts = sortedProducts.filter(product => priceEditForms[product.product_no]);
     
     if (allowedProducts.length === 0) {
-      toast.error(`테스트 상품 ${TEST_PRODUCT_CODE}이 현재 목록에 없습니다.`);
+      toast.error('가격 변경할 상품이 없습니다. 편집 모드에서 가격을 입력해주세요.');
       setIsLoading(false);
       return;
     }
@@ -550,7 +551,7 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
     const totalSteps = allowedProducts.length * stepsPerProduct;
     setTotalSaveSteps(totalSteps);
     
-    console.log(`🔒 테스트 모드: ${TEST_PRODUCT_CODE} 상품만 업데이트 (총 ${allowedProducts.length}개, ${totalSteps}단계)`);
+    console.log(`전체 상품 가격 업데이트 시작: 총 ${allowedProducts.length}개 상품, ${totalSteps}단계`);
 
     try {
       let currentStep = 0;
@@ -559,7 +560,7 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
         const formData = priceEditForms[product.product_no];
         if (!formData) continue;
 
-        console.log(`\n🚀 === ${product.product_code} 업데이트 시작 ===`);
+        console.log(`\n=== ${product.product_code} 업데이트 시작 ===`);
 
         try {
           // 가격 데이터 정리 (쉼표 제거, 소수점 형식 보장)
@@ -568,7 +569,7 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
           const cleanAdditionalAmount2nd = sanitizePrice(formData.additional_amount_2nd);
           const cleanAdditionalAmount3rd = sanitizePrice(formData.additional_amount_3rd);
 
-          console.log(`💾 1단계 - 기본가격/공급가 업데이트:`, {
+          console.log(`1단계 - 기본가격/공급가 업데이트:`, {
             price: cleanPrice1kg,
             supply_price: cleanSupplyPrice
           });
@@ -588,33 +589,41 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
           const option3rd = `${thirdUnit}kg(${Math.round(unitPrice3rd)}원)`;
 
           // 🔥 5-1) 기본 가격과 공급가 업데이트
-          console.log(`📡 API 호출 1: 기본가격/공급가 업데이트`);
+          console.log(`API 호출 1: 기본가격/공급가 업데이트`);
           await cafe24API.updateProduct(product.product_no, {
             price: cleanPrice1kg,
             supply_price: cleanSupplyPrice
           });
-          console.log(`✅ 1단계 완료: 기본가격/공급가 업데이트 성공`);
+          console.log(`완료: 기본가격/공급가 업데이트 성공`);
           
           // 진행률 업데이트 (1/4 단계 완료)
           currentStep++;
           const progress = Math.round((currentStep / totalSteps) * 100);
           setSaveProgress(progress);
-          console.log(`📊 진행률: ${progress}% (${currentStep}/${totalSteps})`);
+          console.log(`진행률: ${progress}% (${currentStep}/${totalSteps})`);
+          
+          // API 호출 간격 조절 (1초 대기)
+          console.log(`API 호출 제한 방지를 위해 1초 대기...`);
+          await new Promise(resolve => setTimeout(resolve, 1000));
 
-          // 🔥 5-2) 기존 옵션 정보 조회 후 옵션명 업데이트
-          console.log(`💾 2단계 - 기존 옵션 조회 및 옵션명 업데이트:`, {
+          // 5-2) 기존 옵션 정보 조회 후 옵션명 업데이트
+          console.log(`2단계 - 기존 옵션 조회 및 옵션명 업데이트:`, {
             option1kg,
             option2nd,
             option3rd
           });
 
-          console.log(`📡 API 호출 2-1: 기존 옵션 정보 조회`);
+          console.log(`API 호출 2-1: 기존 옵션 정보 조회`);
           const productDetail = await cafe24API.getProductDetail(product.product_no);
           const optionsInfo = productDetail.product?.options;
           const currentOptions = optionsInfo?.options || [];
           
-          console.log(`🔍 현재 옵션 정보:`, optionsInfo);
-          console.log(`🔍 현재 옵션 배열:`, currentOptions);
+          console.log(`현재 옵션 정보:`, optionsInfo);
+          console.log(`현재 옵션 배열:`, currentOptions);
+          
+          // API 호출 간격 조절 (1초 대기)
+          console.log(`⏳ API 호출 제한 방지를 위해 1초 대기...`);
+          await new Promise(resolve => setTimeout(resolve, 1000));
 
           // original_options 구성 (기존 옵션 구조 완전 복사)
           const originalOptions = currentOptions.map((option: any) => ({
@@ -643,8 +652,8 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
             }
           ];
 
-          console.log(`📝 사용할 옵션명: "${existingOptionName}"`);
-          console.log(`📝 기존 옵션 속성들:`, {
+          console.log(`사용할 옵션명: "${existingOptionName}"`);
+          console.log(`기존 옵션 속성들:`, {
             option_display_type: existingOption?.option_display_type,
             required_option: existingOption?.required_option,
             option_code: existingOption?.option_code
@@ -655,20 +664,24 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
             options: newOptions
           };
 
-          console.log(`📡 API 호출 2-2: 옵션명 업데이트 (original_options 포함)`);
-          console.log(`📝 original_options:`, JSON.stringify(originalOptions, null, 2));
-          console.log(`📝 new options:`, JSON.stringify(newOptions, null, 2));
+          console.log(`API 호출 2-2: 옵션명 업데이트 (original_options 포함)`);
+          console.log(`original_options:`, JSON.stringify(originalOptions, null, 2));
+          console.log(`new options:`, JSON.stringify(newOptions, null, 2));
           
           await cafe24API.updateProductOptions(product.product_no, optionsData);
-          console.log(`✅ 2단계 완료: 옵션명 업데이트 성공`);
+          console.log(`완료: 옵션명 업데이트 성공`);
           
           // 진행률 업데이트 (2/4 단계 완료)
           currentStep++;
           const progress2 = Math.round((currentStep / totalSteps) * 100);
           setSaveProgress(progress2);
-          console.log(`📊 진행률: ${progress2}% (${currentStep}/${totalSteps})`);
+          console.log(`진행률: ${progress2}% (${currentStep}/${totalSteps})`);
+          
+          // API 호출 간격 조절 (1초 대기)
+          console.log(`API 호출 제한 방지를 위해 1초 대기...`);
+          await new Promise(resolve => setTimeout(resolve, 1000));
 
-          // 🔥 5-3) Variant 추가금액 업데이트
+          // 5-3) Variant 추가금액 업데이트
           if (product.variants && product.variants.length >= 2) {
             // variants를 additional_amount 기준으로 정렬
             const sortedVariants = [...product.variants].sort((a, b) => 
@@ -678,52 +691,62 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
             // 2차 variant (5kg 또는 4kg) 업데이트
             if (sortedVariants.length > 1) {
               const variant2nd = sortedVariants[1];
-              console.log(`💾 3단계 - 2차 Variant 업데이트:`, {
+              console.log(`3단계 - 2차 Variant 업데이트:`, {
                 variantCode: variant2nd.variant_code,
                 additional_amount: cleanAdditionalAmount2nd
               });
 
-              console.log(`📡 API 호출 3: 2차 Variant 업데이트`);
+              console.log(`API 호출 3: 2차 Variant 업데이트`);
               await cafe24API.updateProductVariant(product.product_no, variant2nd.variant_code, {
                 additional_amount: cleanAdditionalAmount2nd
               });
-              console.log(`✅ 3단계 완료: 2차 Variant 업데이트 성공`);
+              console.log(`완료: 2차 Variant 업데이트 성공`);
               
               // 진행률 업데이트 (3/4 단계 완료)
               currentStep++;
               const progress3 = Math.round((currentStep / totalSteps) * 100);
               setSaveProgress(progress3);
-              console.log(`📊 진행률: ${progress3}% (${currentStep}/${totalSteps})`);
+              console.log(`진행률: ${progress3}% (${currentStep}/${totalSteps})`);
+              
+              // API 호출 간격 조절 (1초 대기)
+              console.log(`API 호출 제한 방지를 위해 1초 대기...`);
+              await new Promise(resolve => setTimeout(resolve, 1000));
             }
 
             // 3차 variant (20kg 또는 15kg) 업데이트
             if (sortedVariants.length > 2) {
               const variant3rd = sortedVariants[2];
-              console.log(`💾 4단계 - 3차 Variant 업데이트:`, {
+              console.log(`4단계 - 3차 Variant 업데이트:`, {
                 variantCode: variant3rd.variant_code,
                 additional_amount: cleanAdditionalAmount3rd
               });
 
-              console.log(`📡 API 호출 4: 3차 Variant 업데이트`);
+              console.log(`API 호출 4: 3차 Variant 업데이트`);
               await cafe24API.updateProductVariant(product.product_no, variant3rd.variant_code, {
                 additional_amount: cleanAdditionalAmount3rd
               });
-              console.log(`✅ 4단계 완료: 3차 Variant 업데이트 성공`);
+              console.log(`완료: 3차 Variant 업데이트 성공`);
               
               // 진행률 업데이트 (4/4 단계 완료)
               currentStep++;
               const progress4 = Math.round((currentStep / totalSteps) * 100);
               setSaveProgress(progress4);
-              console.log(`📊 진행률: ${progress4}% (${currentStep}/${totalSteps})`);
+              console.log(`진행률: ${progress4}% (${currentStep}/${totalSteps})`);
+              
+              // 상품 처리 완료 후 다음 상품 처리 전 약간의 추가 대기 (선택사항)
+              if (product !== allowedProducts[allowedProducts.length - 1]) {
+                console.log(`다음 상품 처리 전 500ms 추가 대기...`);
+                await new Promise(resolve => setTimeout(resolve, 500));
+              }
             }
-          } else {
-            console.warn(`⚠️ ${product.product_code}: variants 데이터가 부족합니다.`);
-          }
+                      } else {
+              console.warn(`${product.product_code}: variants 데이터가 부족합니다.`);
+            }
 
-          console.log(`🎉 === ${product.product_code} 전체 업데이트 완료 ===\n`);
+          console.log(`완료: ${product.product_code} 전체 업데이트 완료`);
           successCount++;
         } catch (error) {
-          console.error(`❌ ${product.product_code} 업데이트 실패:`, error);
+          console.error(`실패: ${product.product_code} 업데이트`, error);
           errorCount++;
         }
       }
@@ -736,17 +759,16 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
         setIsPriceEditMode(false);
         setPriceEditForms({});
         
-        console.log('🔄 가격 업데이트 완료 후 상품 목록 새로고침 시작...');
+        console.log('가격 업데이트 완료 후 상품 목록 새로고침 시작...');
         
         // 업데이트된 데이터 반영을 위한 안내 메시지
         toast('업데이트된 가격을 반영하는 중입니다... (2초)', {
-          duration: 2000,
-          icon: '🔄'
+          duration: 2000
         });
         
         // 카페24 API 캐시 반영을 위해 2초 대기 후 새로고침
         setTimeout(() => {
-          console.log('⏰ 2초 대기 후 데이터 새로고침 실행...');
+          console.log('2초 대기 후 데이터 새로고침 실행...');
           onProductsUpdate();
         }, 2000);
       }
@@ -756,9 +778,30 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
     } finally {
       setIsLoading(false);
       setSaveProgress(0); // 진행률 초기화
+      setSaveStartTime(null); // 시작 시간 초기화
     }
   };
 
+  // 예상 남은 시간 계산 함수
+  const calculateEstimatedTime = (): string => {
+    if (!saveStartTime || saveProgress === 0) return "계산 중...";
+    
+    const elapsed = Date.now() - saveStartTime.getTime();
+    const progressRatio = saveProgress / 100;
+    const estimatedTotal = elapsed / progressRatio;
+    const remaining = estimatedTotal - elapsed;
+    
+    if (remaining <= 0) return "곧 완료됩니다...";
+    
+    const minutes = Math.floor(remaining / 60000);
+    const seconds = Math.floor((remaining % 60000) / 1000);
+    
+    if (minutes > 0) {
+      return `약 ${minutes}분 ${seconds}초 남음`;
+    } else {
+      return `약 ${seconds}초 남음`;
+    }
+  };
 
 
   const formatPrice = (price: string) => {
@@ -933,7 +976,7 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
               <div className="mt-3 p-3 bg-red-100 border border-red-300 rounded-lg">
                 <div className="flex items-center gap-2 text-red-800">
                   <X className="h-4 w-4" />
-                  <span className="font-medium">⚠️ 데이터 오류 경고</span>
+                                      <span className="font-medium">데이터 오류 경고</span>
                 </div>
                 <p className="mt-1 text-sm text-red-700">
                   <span className="font-medium">{missingFormData.length}개 상품</span>에서 폼 데이터가 누락되었습니다. 
@@ -1289,6 +1332,54 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
           </span>
         </div>
       </div>
+
+      {/* 가격 저장 진행 오버레이 */}
+      {isLoading && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-8 max-w-md w-full mx-4 shadow-2xl">
+            <div className="text-center">
+              {/* 로딩 스피너 */}
+              <div className="mb-6">
+                <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-200 border-t-blue-600 mx-auto"></div>
+              </div>
+              
+              {/* 제목 */}
+              <h3 className="text-xl font-bold text-gray-900 mb-2">
+                상품 가격 업데이트 중
+              </h3>
+              
+              {/* 진행률 표시 */}
+              <div className="mb-4">
+                <div className="flex justify-between text-sm text-gray-600 mb-2">
+                  <span>진행률</span>
+                  <span>{saveProgress}%</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-3">
+                  <div 
+                    className="bg-blue-600 h-3 rounded-full transition-all duration-300 ease-out"
+                    style={{ width: `${saveProgress}%` }}
+                  ></div>
+                </div>
+              </div>
+              
+              {/* 단계 정보 */}
+              <div className="mb-4 text-sm text-gray-600">
+                <div className="flex justify-between mb-1">
+                  <span>처리 단계</span>
+                  <span>{Math.ceil((saveProgress / 100) * totalSaveSteps)} / {totalSaveSteps}</span>
+                </div>
+              </div>
+              
+              {/* 예상 남은 시간 */}
+              <div className="mb-4">
+                <div className="text-lg font-medium text-blue-600">
+                  {calculateEstimatedTime()}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 } 
