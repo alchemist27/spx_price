@@ -60,7 +60,6 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
   const [completedProducts, setCompletedProducts] = useState(0);
   const [totalProducts, setTotalProducts] = useState(0);
   const [saveStartTime, setSaveStartTime] = useState<Date | null>(null);
-  const [shouldCancelSave, setShouldCancelSave] = useState(false);
 
   // 상품 데이터 로딩 완료 (로그 제거로 성능 최적화)
 
@@ -403,18 +402,11 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
     return cleanNumber.toFixed(2);
   };
 
-  // 가격 저장 중단 함수
-  const cancelSave = () => {
-    setShouldCancelSave(true);
-    console.log('중단 요청됨');
-  };
-
   // 전체 가격 저장
   const saveAllPrices = async () => {
     setIsLoading(true);
     setSaveProgress(0);
     setSaveStartTime(new Date()); // 시작 시간 기록
-    setShouldCancelSave(false); // 중단 플래그 초기화
     let successCount = 0;
     let errorCount = 0;
 
@@ -424,23 +416,22 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
         const formData = priceEditForms[product.product_no];
         if (!formData) return false;
 
-        // 현재 상품의 원본 가격 정보 계산
-        const variantPrices = calculateVariantPrices(product);
-        const originalSupplyPrice = parseFloat(product.supply_price);
-        const originalUnitPrice2nd = variantPrices.unitPrice2nd || originalSupplyPrice;
-        const originalUnitPrice3rd = variantPrices.unitPrice3rd || originalSupplyPrice;
+        // 원본 데이터와 현재 폼 데이터 비교 (소수점 2자리 정밀도)
+        const originalSupplyPrice = parseFloat(product.supply_price || '0');
+        const formSupplyPrice = parseFloat(formData.supply_price.replace(/,/g, '') || '0');
+        
+        const originalUnitPrice2nd = parseFloat(product.variants?.[1]?.additional_amount || '0') + originalSupplyPrice;
+        const formUnitPrice2nd = parseFloat(formData.unit_price_2nd.replace(/,/g, '') || '0');
+        
+        const originalUnitPrice3rd = parseFloat(product.variants?.[2]?.additional_amount || '0') + originalSupplyPrice;
+        const formUnitPrice3rd = parseFloat(formData.unit_price_3rd.replace(/,/g, '') || '0');
 
-        // 폼의 가격 정보
-        const formSupplyPrice = parseFloat(formData.supply_price.replace(/,/g, '')) || 0;
-        const formUnitPrice2nd = parseFloat(formData.unit_price_2nd.replace(/,/g, '')) || 0;
-        const formUnitPrice3rd = parseFloat(formData.unit_price_3rd.replace(/,/g, '')) || 0;
+        // 0.01 허용 오차로 비교 (부동소수점 정밀도 문제 해결)
+        const hasSupplyPriceChange = Math.abs(originalSupplyPrice - formSupplyPrice) > 0.01;
+        const hasUnitPrice2ndChange = Math.abs(originalUnitPrice2nd - formUnitPrice2nd) > 0.01;
+        const hasUnitPrice3rdChange = Math.abs(originalUnitPrice3rd - formUnitPrice3rd) > 0.01;
 
-        // 가격이 변경되었는지 확인 (소수점 2자리까지 비교)
-        const supplyPriceChanged = Math.abs(originalSupplyPrice - formSupplyPrice) > 0.01;
-        const unitPrice2ndChanged = Math.abs(originalUnitPrice2nd - formUnitPrice2nd) > 0.01;
-        const unitPrice3rdChanged = Math.abs(originalUnitPrice3rd - formUnitPrice3rd) > 0.01;
-
-        return supplyPriceChanged || unitPrice2ndChanged || unitPrice3rdChanged;
+        return hasSupplyPriceChange || hasUnitPrice2ndChange || hasUnitPrice3rdChange;
       });
     };
 
@@ -452,7 +443,6 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
       return;
     }
 
-    // 변경된 상품 목록 로그 (디버깅용)
     const changedProductCodes = allowedProducts.map(p => p.product_code).join(', ');
     console.log(`변경된 상품: ${changedProductCodes}`);
 
@@ -474,12 +464,6 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
 
         // 상품 처리 시작 (로그 최소화)
         const productIndex = allowedProducts.indexOf(product) + 1;
-        
-        // 중단 요청 확인
-        if (shouldCancelSave) {
-          console.log(`중단됨: ${productIndex - 1}개 완료`);
-          break;
-        }
 
         try {
           // 가격 데이터 정리 (쉼표 제거, 소수점 형식 보장)
@@ -508,28 +492,15 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
             supply_price: cleanSupplyPrice
           });
           
-          // 중단 요청 확인 (기본가격 업데이트 후)
-          if (shouldCancelSave) {
-            break;
-          }
-          
           // 진행률 업데이트 (1/4 단계 완료)
           currentStep++;
           const progress = Math.round((currentStep / totalSteps) * 100);
           setSaveProgress(progress);
-          // API 호출 간격 조절 (1초 대기, 중단 가능)
-          for (let i = 0; i < 10; i++) {
-            if (shouldCancelSave) break;
-            await new Promise(resolve => setTimeout(resolve, 100));
-          }
+          // API 호출 간격 조절 (1초 대기)
+          await new Promise(resolve => setTimeout(resolve, 1000));
 
           // 5-2) 기존 옵션 정보 조회 후 옵션명 업데이트
           const productDetail = await cafe24API.getProductDetail(product.product_no);
-          
-          // 중단 요청 확인 (옵션 조회 후)
-          if (shouldCancelSave) {
-            break;
-          }
           
           const optionsInfo = productDetail.product?.options;
           const currentOptions = optionsInfo?.options || [];
@@ -571,21 +542,13 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
 
           await cafe24API.updateProductOptions(product.product_no, optionsData);
           
-          // 중단 요청 확인 (옵션 업데이트 후)
-          if (shouldCancelSave) {
-            break;
-          }
-          
           // 진행률 업데이트 (2/4 단계 완료)
           currentStep++;
           const progress2 = Math.round((currentStep / totalSteps) * 100);
           setSaveProgress(progress2);
           
-          // API 호출 간격 조절 (1초 대기, 중단 가능)
-          for (let i = 0; i < 10; i++) {
-            if (shouldCancelSave) break;
-            await new Promise(resolve => setTimeout(resolve, 100));
-          }
+          // API 호출 간격 조절 (1초 대기)
+          await new Promise(resolve => setTimeout(resolve, 1000));
 
           // 5-3) Variant 추가금액 업데이트
           if (product.variants && product.variants.length >= 2) {
@@ -601,21 +564,13 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
                 additional_amount: cleanAdditionalAmount2nd
               });
               
-              // 중단 요청 확인 (2차 variant 업데이트 후)
-              if (shouldCancelSave) {
-                break;
-              }
-              
               // 진행률 업데이트 (3/4 단계 완료)
               currentStep++;
               const progress3 = Math.round((currentStep / totalSteps) * 100);
               setSaveProgress(progress3);
               
-              // API 호출 간격 조절 (1초 대기, 중단 가능)
-              for (let i = 0; i < 10; i++) {
-                if (shouldCancelSave) break;
-                await new Promise(resolve => setTimeout(resolve, 100));
-              }
+              // API 호출 간격 조절 (1초 대기)
+              await new Promise(resolve => setTimeout(resolve, 1000));
             }
 
             // 3차 variant (20kg 또는 15kg) 업데이트
@@ -624,11 +579,6 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
               await cafe24API.updateProductVariant(product.product_no, variant3rd.variant_code, {
                 additional_amount: cleanAdditionalAmount3rd
               });
-              
-              // 중단 요청 확인 (3차 variant 업데이트 후)
-              if (shouldCancelSave) {
-                break;
-              }
               
               // 진행률 업데이트 (4/4 단계 완료)
               currentStep++;
@@ -640,7 +590,7 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
                 await new Promise(resolve => setTimeout(resolve, 500));
               }
             }
-                                } else {
+          } else {
             console.warn(`${product.product_code}: variants 데이터가 부족합니다.`);
           }
 
@@ -659,15 +609,13 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
         }
       }
 
-              // 결과 처리
-        if (shouldCancelSave) {
-          toast(`가격 저장이 중단되었습니다. (성공: ${successCount}개, 실패: ${errorCount}개)`);
-        } else if (successCount > 0) {
-          toast.success(`${successCount}개 상품 가격이 업데이트되었습니다.`);
-          if (errorCount > 0) {
-            toast.error(`${errorCount}개 상품 업데이트에 실패했습니다.`);
-          }
-          console.log(`완료: ${successCount}개 성공, ${errorCount}개 실패`);
+      // 결과 처리
+      if (successCount > 0) {
+        toast.success(`${successCount}개 상품 가격이 업데이트되었습니다.`);
+        if (errorCount > 0) {
+          toast.error(`${errorCount}개 상품 업데이트에 실패했습니다.`);
+        }
+        console.log(`완료: ${successCount}개 성공, ${errorCount}개 실패`);
         
         // 업데이트된 데이터 반영을 위한 안내 메시지
         toast('업데이트된 가격을 반영하는 중입니다... (2초)', {
@@ -680,8 +628,8 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
         }, 2000);
       }
 
-      // 중단되지 않은 경우에만 편집 모드 해제
-      if (!shouldCancelSave && successCount > 0) {
+      // 성공한 경우에만 편집 모드 해제
+      if (successCount > 0) {
         setIsPriceEditMode(false);
         setPriceEditForms({});
       }
@@ -694,7 +642,6 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
       setCompletedProducts(0); // 완료 상품 수 초기화
       setTotalProducts(0); // 총 상품 수 초기화
       setSaveStartTime(null); // 시작 시간 초기화
-      setShouldCancelSave(false); // 중단 플래그 초기화
     }
   };
 
@@ -1287,20 +1234,15 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
               </div>
               
               {/* 예상 남은 시간 */}
-              <div className="mb-6">
-                <div className="text-lg font-medium text-blue-600">
-                  {calculateEstimatedTime()}
+              {saveStartTime && saveProgress > 0 && (
+                <div className="text-sm text-gray-500 mb-4">
+                  예상 남은 시간: {calculateEstimatedTime()}
                 </div>
-              </div>
+              )}
               
-              {/* 중단 버튼 */}
-              <div className="flex justify-center">
-                <button
-                  onClick={cancelSave}
-                  className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
-                >
-                  중단하고 나가기
-                </button>
+              {/* 처리된 상품 수 */}
+              <div className="text-sm text-gray-600 mb-6">
+                처리된 상품: {completedProducts}/{totalProducts}개
               </div>
             </div>
           </div>
