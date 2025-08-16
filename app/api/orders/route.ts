@@ -27,13 +27,13 @@ export async function GET(request: NextRequest) {
       apiUrl += `&end_date=${endDate}`;
     }
     
-    // 주문 상태 필터 추가 (N00: 입금전, N10: 상품준비중, N20: 배송대기, N21: 배송보류, N22: 배송준비중, N30: 배송중, N40: 배송완료)
+    // 주문 상태 필터 추가
     if (orderStatus) {
       apiUrl += `&order_status=${orderStatus}`;
     }
 
     // 배송정보 포함
-    apiUrl += '&embed=receivers,items,buyers';
+    apiUrl += '&embed=receivers,items,buyers,cancellation';
 
     console.log('주문 조회 API 호출:', apiUrl);
 
@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
       headers: {
         'Authorization': `Bearer ${token.access_token}`,
         'Content-Type': 'application/json',
-        'X-Cafe24-Api-Version': '2024-06-01'
+        'X-Cafe24-Api-Version': '2025-06-01'
       },
     });
 
@@ -61,47 +61,102 @@ export async function GET(request: NextRequest) {
       order_id: order.order_id,
       order_date: order.order_date,
       payment_date: order.payment_date,
-      order_status: order.order_status,
-      payment_amount: order.actual_order_amount?.order_price_amount || '0',
-      currency: order.actual_order_amount?.currency || 'KRW',
+      
+      // 주문 상태 (paid, canceled 필드로 판단)
+      paid: order.paid === 'T',
+      canceled: order.canceled === 'T',
+      order_status: getOrderStatus(order),
+      order_status_text: getOrderStatusText(getOrderStatus(order)),
+      
+      // 결제 정보
+      payment_amount: order.payment_amount || order.actual_order_amount?.payment_amount || '0',
+      actual_payment: order.actual_order_amount?.payment_amount || '0',
+      order_price_amount: order.actual_order_amount?.order_price_amount || '0',
+      shipping_fee: order.actual_order_amount?.shipping_fee || '0',
+      currency: order.currency || 'KRW',
+      payment_method: order.payment_method_name?.join(', ') || '',
       
       // 구매자 정보
-      buyer_name: order.buyers?.[0]?.name || '',
-      buyer_phone: order.buyers?.[0]?.phone || '',
-      buyer_email: order.buyers?.[0]?.email || '',
+      member_id: order.member_id || '',
+      member_email: order.member_email || '',
+      billing_name: order.billing_name || '',
       
-      // 수령자 정보
+      // buyers 배열이 있는 경우
+      buyer_name: order.buyers?.[0]?.name || order.billing_name || '',
+      buyer_phone: order.buyers?.[0]?.phone || order.buyers?.[0]?.cellphone || '',
+      buyer_email: order.buyers?.[0]?.email || order.member_email || '',
+      
+      // 수령자 정보 (receivers 배열에서)
       receiver_name: order.receivers?.[0]?.name || '',
-      receiver_phone: order.receivers?.[0]?.phone || '',
-      receiver_address: order.receivers?.[0]?.address_full || '',
+      receiver_phone: order.receivers?.[0]?.phone || order.receivers?.[0]?.cellphone || '',
+      receiver_address: `${order.receivers?.[0]?.address1 || ''} ${order.receivers?.[0]?.address2 || ''}`.trim() || 
+                       order.receivers?.[0]?.address_full || '',
+      receiver_zipcode: order.receivers?.[0]?.zipcode || '',
       shipping_message: order.receivers?.[0]?.shipping_message || '',
       
       // 배송 정보
-      shipping_status: order.receivers?.[0]?.shipping_status || '',
+      shipping_status: order.shipping_status || '',
+      shipping_status_text: getShippingStatusText(order.shipping_status),
       shipping_company: order.receivers?.[0]?.shipping_company || '',
+      shipping_company_name: order.receivers?.[0]?.shipping_company_name || '',
       tracking_no: order.receivers?.[0]?.tracking_no || '',
+      shipping_type: order.shipping_type || '',
+      shipping_type_text: order.shipping_type_text || '',
+      
+      // 주문 출처 정보
+      order_place_name: order.order_place_name || '',
+      order_place_id: order.order_place_id || '',
+      market_id: order.market_id || '',
+      
+      // 기타 정보
+      first_order: order.first_order === 'T',
+      order_from_mobile: order.order_from_mobile === 'T',
+      use_escrow: order.use_escrow === 'T',
       
       // 주문 상품 정보
       items: order.items?.map((item: any) => ({
-        item_no: item.item_no,
+        item_no: item.item_no || item.order_item_code,
         product_no: item.product_no,
+        product_code: item.product_code || '',
         product_name: item.product_name,
+        product_name_english: item.product_name_english || '',
         option_value: item.option_value || '',
         quantity: item.quantity,
-        product_price: item.product_price,
+        product_price: item.product_price || item.item_price || '0',
         option_price: item.option_price || '0',
-        additional_discount_price: item.additional_discount_price || '0'
+        additional_discount_price: item.additional_discount_price || '0',
+        supplier_product_name: item.supplier_product_name || '',
+        product_bundle: item.product_bundle === 'T',
+        product_bundle_name: item.product_bundle_name || '',
+        
+        // 배송 상태
+        shipping_status: item.shipping_status || '',
+        shipping_status_text: getShippingStatusText(item.shipping_status),
+        
+        // 처리 상태 코드들
+        order_status: item.order_status || '',
+        claim_status: item.claim_status || '',
+        claim_type: item.claim_type || ''
       })) || [],
       
-      // 주문 상태 한글 변환
-      order_status_text: getOrderStatusText(order.order_status),
-      shipping_status_text: getShippingStatusText(order.receivers?.[0]?.shipping_status)
+      // 배송비 상세
+      shipping_fee_detail: order.shipping_fee_detail || [],
+      regional_surcharge_detail: order.regional_surcharge_detail || [],
+      
+      // 세금 정보
+      tax_detail: order.tax_detail || [],
+      
+      // 추가 주문 정보
+      additional_order_info_list: order.additional_order_info_list || []
     })) || [];
+
+    // has_next 판단을 위한 links 확인
+    const hasNext = data.links?.some((link: any) => link.rel === 'next') || false;
 
     return NextResponse.json({ 
       orders,
-      count: data.count || 0,
-      has_next: data.links?.next ? true : false
+      count: data.count || orders.length,
+      has_next: hasNext
     });
 
   } catch (error) {
@@ -111,6 +166,37 @@ export async function GET(request: NextRequest) {
       details: error instanceof Error ? error.message : '알 수 없는 오류'
     }, { status: 500 });
   }
+}
+
+// 주문 상태 판단 (paid, canceled 필드 기반)
+function getOrderStatus(order: any): string {
+  // 취소된 주문
+  if (order.canceled === 'T') {
+    return 'C00';
+  }
+  
+  // 결제 완료 주문
+  if (order.paid === 'T') {
+    // receivers나 items의 shipping_status로 추가 판단
+    const firstReceiver = order.receivers?.[0];
+    const firstItem = order.items?.[0];
+    
+    if (firstReceiver?.shipping_status || firstItem?.shipping_status) {
+      const shippingStatus = firstReceiver?.shipping_status || firstItem?.shipping_status;
+      
+      // 배송 상태에 따른 주문 상태 매핑
+      if (shippingStatus === 'shipping') return 'N30'; // 배송중
+      if (shippingStatus === 'shipped') return 'N40'; // 배송완료
+      if (shippingStatus === 'preparing') return 'N22'; // 배송준비중
+      if (shippingStatus === 'ready') return 'N20'; // 배송대기
+    }
+    
+    // 기본값: 상품준비중
+    return 'N10';
+  }
+  
+  // 미결제
+  return 'N00';
 }
 
 // 주문 상태 한글 변환
@@ -134,10 +220,22 @@ function getOrderStatusText(status: string): string {
 // 배송 상태 한글 변환
 function getShippingStatusText(status: string): string {
   const statusMap: Record<string, string> = {
-    'F00': '배송전',
-    'F10': '배송준비중',
-    'F20': '배송중',
-    'F30': '배송완료'
+    // shipping_status 필드값
+    'T': '배송완료',
+    'F': '배송전',
+    'M': '배송중',
+    'W': '배송대기',
+    'P': '배송준비중',
+    
+    // 다른 형태의 값들
+    'standby': '배송대기',
+    'preparing': '배송준비중',
+    'ready': '배송준비완료',
+    'shipping': '배송중',
+    'shipped': '배송완료',
+    
+    // 기본값
+    '': '배송전'
   };
   return statusMap[status] || status || '배송전';
 }
