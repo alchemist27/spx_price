@@ -113,7 +113,6 @@ export default function Dashboard() {
                 <li>• 상품별 가격 조정</li>
                 <li>• 일괄 가격 업데이트</li>
                 <li>• 옵션별 가격 설정</li>
-                <li>• 엑셀 내보내기/가져오기</li>
               </ul>
               <button className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
                 가격 관리 시작
@@ -137,7 +136,6 @@ export default function Dashboard() {
                 주문 처리 및 배송 상태를 관리합니다
               </p>
               <ul className="text-sm text-gray-500 space-y-2 text-left">
-                <li>• 주문 상태 확인</li>
                 <li>• 배송 처리 관리</li>
                 <li>• 주문 내역 조회</li>
                 <li>• 배송 상태 업데이트</li>

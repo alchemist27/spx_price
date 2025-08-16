@@ -17,10 +17,19 @@
 - **Scope**: 
   - `mall.read_product` (상품 조회 권한)
   - `mall.write_product` (상품 수정 권한)
+  - `mall.read_order` (주문 조회 권한)
+  - `mall.write_order` (주문 수정 권한)
+  - `mall.read_notification` (알림 조회 권한)
+  - `mall.write_notification` (알림 수정 권한)
+  - `mall.read_shipping` (배송 조회 권한)
+  - `mall.write_shipping` (배송 수정 권한)
 
 ### 3. 필요한 권한
 - 상품 목록 조회
 - 상품 정보 수정 (가격, 표시 여부, 판매 여부)
+- 주문 목록 조회 및 관리
+- 배송 상태 관리
+- 알림 관리
 
 ## 발급받을 정보
 

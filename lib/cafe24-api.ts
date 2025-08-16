@@ -250,7 +250,7 @@ class Cafe24API {
       client_id: process.env.NEXT_PUBLIC_CAFE24_CLIENT_ID || 'your_client_id',
       state: Math.random().toString(36).substring(7),
       redirect_uri: process.env.NEXT_PUBLIC_CAFE24_REDIRECT_URI || 'https://spx-price.vercel.app/api/auth/callback',
-      scope: 'mall.read_product,mall.write_product,mall.read_category,mall.write_category',
+      scope: 'mall.read_product,mall.write_product,mall.read_category,mall.write_category,mall.read_order,mall.write_order,mall.read_notification,mall.write_notification,mall.read_shipping,mall.write_shipping',
     });
 
     return `${CAFE24_BASE_URL}/oauth/authorize?${params.toString()}`;
