@@ -116,19 +116,6 @@ export default function Dashboard() {
           </p>
         </div>
 
-        {/* 재인증 안내 배너 */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-8 max-w-4xl mx-auto">
-          <div className="flex items-start">
-            <RefreshCw className="h-5 w-5 text-blue-600 mt-0.5 mr-3 flex-shrink-0" />
-            <div className="flex-1">
-              <p className="text-sm text-blue-800">
-                <strong>주문 관리 기능을 처음 사용하시나요?</strong> 
-                주문 조회 권한이 새로 추가되었습니다. 상단의 "재인증" 버튼을 클릭하여 Cafe24에 다시 로그인해주세요.
-              </p>
-            </div>
-          </div>
-        </div>
-
         <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
           {/* 가격 관리 카드 */}
           <div 

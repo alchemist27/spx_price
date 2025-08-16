@@ -19,12 +19,16 @@ export async function GET(request: NextRequest) {
     const mallId = process.env.NEXT_PUBLIC_CAFE24_MALL_ID;
     let apiUrl = `https://${mallId}.cafe24api.com/api/v2/admin/orders?limit=${limit}&offset=${offset}`;
     
-    // 날짜 필터 추가
+    // 날짜 필터 추가 (T00:00:00 형식 추가)
     if (startDate) {
-      apiUrl += `&start_date=${startDate}`;
+      // YYYY-MM-DD 형식을 YYYY-MM-DDTHH:MM:SS+09:00 형식으로 변환
+      const formattedStartDate = startDate.includes('T') ? startDate : `${startDate}T00:00:00+09:00`;
+      apiUrl += `&start_date=${encodeURIComponent(formattedStartDate)}`;
     }
     if (endDate) {
-      apiUrl += `&end_date=${endDate}`;
+      // 종료일은 23:59:59로 설정
+      const formattedEndDate = endDate.includes('T') ? endDate : `${endDate}T23:59:59+09:00`;
+      apiUrl += `&end_date=${encodeURIComponent(formattedEndDate)}`;
     }
     
     // 주문 상태 필터 추가
@@ -46,13 +50,28 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    const data = await response.json();
+    let data;
+    const responseText = await response.text();
+    
+    try {
+      data = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('응답 파싱 실패:', responseText);
+      return NextResponse.json({ 
+        error: 'API 응답을 파싱할 수 없습니다.',
+        details: responseText,
+        url: apiUrl
+      }, { status: 500 });
+    }
 
     if (!response.ok) {
       console.error('주문 조회 실패:', data);
+      console.error('요청 URL:', apiUrl);
       return NextResponse.json({ 
         error: data.error?.message || '주문 조회에 실패했습니다.',
-        details: data 
+        details: data,
+        statusCode: response.status,
+        url: apiUrl
       }, { status: response.status });
     }
 
@@ -161,9 +180,17 @@ export async function GET(request: NextRequest) {
 
   } catch (error) {
     console.error('주문 조회 오류:', error);
+    
+    // 더 자세한 에러 정보 로깅
+    if (error instanceof Error) {
+      console.error('에러 메시지:', error.message);
+      console.error('에러 스택:', error.stack);
+    }
+    
     return NextResponse.json({ 
       error: '주문 조회 중 오류가 발생했습니다.',
-      details: error instanceof Error ? error.message : '알 수 없는 오류'
+      details: error instanceof Error ? error.message : '알 수 없는 오류',
+      errorType: error instanceof Error ? error.name : 'Unknown'
     }, { status: 500 });
   }
 }
