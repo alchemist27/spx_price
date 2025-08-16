@@ -66,33 +66,37 @@ export default function OrderManagement() {
   const router = useRouter();
 
   useEffect(() => {
-    // 관리자 로그인 상태 확인
-    const adminAuth = localStorage.getItem('admin_auth');
-    if (adminAuth === 'true') {
-      setIsAdminAuthenticated(true);
-      checkAuthStatus();
-    } else {
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
     // 기본 날짜 설정 (최근 30일)
     const today = new Date();
     const thirtyDaysAgo = new Date(today);
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     
-    setEndDate(today.toISOString().split('T')[0]);
-    setStartDate(thirtyDaysAgo.toISOString().split('T')[0]);
+    const endDateStr = today.toISOString().split('T')[0];
+    const startDateStr = thirtyDaysAgo.toISOString().split('T')[0];
+    
+    setEndDate(endDateStr);
+    setStartDate(startDateStr);
+    
+    // 관리자 로그인 상태 확인
+    const adminAuth = localStorage.getItem('admin_auth');
+    if (adminAuth === 'true') {
+      setIsAdminAuthenticated(true);
+      // 날짜가 설정된 후에 checkAuthStatus 호출
+      checkAuthStatus(startDateStr, endDateStr);
+    } else {
+      setIsLoading(false);
+    }
   }, []);
 
-  const checkAuthStatus = async () => {
+  const checkAuthStatus = async (initialStartDate?: string, initialEndDate?: string) => {
     try {
       const token = await getToken();
       if (token) {
         setIsAuthenticated(true);
-        // 자동으로 주문 로드
-        setTimeout(() => loadOrders(), 500);
+        // 날짜가 설정된 후에 주문 로드
+        if (initialStartDate && initialEndDate) {
+          setTimeout(() => loadOrdersWithDates(initialStartDate, initialEndDate), 500);
+        }
       }
     } catch (error) {
       console.error('인증 확인 실패:', error);
@@ -101,33 +105,12 @@ export default function OrderManagement() {
     }
   };
 
-  const handleAdminLogin = () => {
-    setIsAdminAuthenticated(true);
-    checkAuthStatus();
-  };
-
-  const handleLoginSuccess = () => {
-    // This will be handled by the auth callback
-  };
-
-  const handleLogout = () => {
-    setIsAuthenticated(false);
-    setIsAdminAuthenticated(false);
-    localStorage.removeItem('admin_auth');
-    toast.success('로그아웃되었습니다.');
-    router.push('/');
-  };
-
-  const handleBack = () => {
-    router.push('/dashboard');
-  };
-
-  const loadOrders = async (offset = 0, append = false) => {
+  const loadOrdersWithDates = async (startDateParam: string, endDateParam: string, offset = 0, append = false) => {
     setIsLoadingOrders(true);
     try {
       const params = new URLSearchParams();
-      if (startDate) params.append('start_date', startDate);
-      if (endDate) params.append('end_date', endDate);
+      params.append('start_date', startDateParam);
+      params.append('end_date', endDateParam);
       if (selectedStatus) params.append('order_status', selectedStatus);
       params.append('limit', '50');
       params.append('offset', offset.toString());
@@ -164,6 +147,37 @@ export default function OrderManagement() {
     } finally {
       setIsLoadingOrders(false);
     }
+  };
+
+  const handleAdminLogin = () => {
+    setIsAdminAuthenticated(true);
+    checkAuthStatus();
+  };
+
+  const handleLoginSuccess = () => {
+    // This will be handled by the auth callback
+  };
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    setIsAdminAuthenticated(false);
+    localStorage.removeItem('admin_auth');
+    toast.success('로그아웃되었습니다.');
+    router.push('/');
+  };
+
+  const handleBack = () => {
+    router.push('/dashboard');
+  };
+
+  const loadOrders = async (offset = 0, append = false) => {
+    // 날짜가 설정되어 있는지 확인
+    if (!startDate || !endDate) {
+      console.log('날짜가 설정되지 않아 주문 로드를 건너뜁니다.');
+      return;
+    }
+    
+    loadOrdersWithDates(startDate, endDate, offset, append);
   };
 
   const loadMoreOrders = () => {
@@ -419,9 +433,6 @@ export default function OrderManagement() {
                         주문상태
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        배송상태
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         상세
                       </th>
                     </tr>
@@ -454,9 +465,6 @@ export default function OrderManagement() {
                           <td className="px-6 py-4 whitespace-nowrap">
                             {getStatusBadge(order.order_status, order.order_status_text)}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            {getStatusBadge(order.shipping_status || 'F00', order.shipping_status_text)}
-                          </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm">
                             <button
                               onClick={() => toggleOrderDetails(order.order_id)}
@@ -468,7 +476,7 @@ export default function OrderManagement() {
                         </tr>
                         {expandedOrderId === order.order_id && (
                           <tr>
-                            <td colSpan={8} className="px-6 py-4 bg-gray-50">
+                            <td colSpan={7} className="px-6 py-4 bg-gray-50">
                               <div className="space-y-4">
                                 {/* 배송 정보 */}
                                 <div>

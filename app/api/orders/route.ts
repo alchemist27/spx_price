@@ -250,7 +250,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// 주문 상태 판단 (paid, canceled 필드 기반)
+// 주문 상태 판단 (paid, canceled, shipping_status 필드 기반)
 function getOrderStatus(order: any): string {
   // 취소된 주문
   if (order.canceled === 'T') {
@@ -259,22 +259,20 @@ function getOrderStatus(order: any): string {
   
   // 결제 완료 주문
   if (order.paid === 'T') {
-    // receivers나 items의 shipping_status로 추가 판단
-    const firstReceiver = order.receivers?.[0];
-    const firstItem = order.items?.[0];
+    // shipping_status 필드 직접 확인 (T/F/M/W/P)
+    const shippingStatus = order.shipping_status;
     
-    if (firstReceiver?.shipping_status || firstItem?.shipping_status) {
-      const shippingStatus = firstReceiver?.shipping_status || firstItem?.shipping_status;
-      
-      // 배송 상태에 따른 주문 상태 매핑
-      if (shippingStatus === 'shipping') return 'N30'; // 배송중
-      if (shippingStatus === 'shipped') return 'N40'; // 배송완료
-      if (shippingStatus === 'preparing') return 'N22'; // 배송준비중
-      if (shippingStatus === 'ready') return 'N20'; // 배송대기
+    if (shippingStatus === 'T') {
+      return 'N40'; // T = 배송완료
+    } else if (shippingStatus === 'M') {
+      return 'N30'; // M = 배송중
+    } else if (shippingStatus === 'P') {
+      return 'N22'; // P = 배송준비중
+    } else if (shippingStatus === 'W') {
+      return 'N20'; // W = 배송대기
+    } else {
+      return 'N10'; // F 또는 기타 = 상품준비중
     }
-    
-    // 기본값: 상품준비중
-    return 'N10';
   }
   
   // 미결제
