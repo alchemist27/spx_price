@@ -154,6 +154,10 @@ export default function OrderManagement() {
       console.error('주문 로딩 실패:', error);
       if (error.response?.status === 401) {
         toast.error('인증이 만료되었습니다. 다시 로그인해주세요.');
+      } else if (error.response?.status === 403 || error.response?.data?.error?.includes('scope') || error.response?.data?.error?.includes('권한')) {
+        toast.error('주문 조회 권한이 없습니다. 대시보드에서 "재인증" 버튼을 클릭해주세요.', {
+          duration: 5000,
+        });
       } else {
         toast.error(error.response?.data?.error || '주문 목록을 불러오는데 실패했습니다.');
       }

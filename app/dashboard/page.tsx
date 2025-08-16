@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import AdminLogin from '@/components/AdminLogin';
-import { LogOut, Package, DollarSign, ShoppingCart } from 'lucide-react';
+import { LogOut, Package, DollarSign, ShoppingCart, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { deleteToken } from '@/lib/firebase';
 
 export default function Dashboard() {
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
@@ -28,6 +29,20 @@ export default function Dashboard() {
     setIsAdminAuthenticated(false);
     localStorage.removeItem('admin_auth');
     toast.success('로그아웃되었습니다.');
+  };
+
+  const handleReauthenticate = async () => {
+    const confirmed = confirm('기존 인증 정보를 삭제하고 다시 인증하시겠습니까?\n주문 관리 등 새로운 권한을 사용하려면 재인증이 필요합니다.');
+    if (confirmed) {
+      const deleted = await deleteToken();
+      if (deleted) {
+        toast.success('인증 정보가 삭제되었습니다. 다시 로그인해주세요.');
+        // 가격 관리 페이지로 이동하면 자동으로 재인증 프로세스 시작
+        router.push('/price-management');
+      } else {
+        toast.error('인증 정보 삭제에 실패했습니다.');
+      }
+    }
   };
 
   const navigateToPriceManagement = () => {
@@ -69,7 +84,15 @@ export default function Dashboard() {
                 className="h-16 w-auto"
               />
             </div>
-            <div className="flex-1 flex items-center justify-end">
+            <div className="flex-1 flex items-center justify-end gap-4">
+              <button
+                onClick={handleReauthenticate}
+                className="btn-secondary flex items-center gap-2"
+                title="Cafe24 재인증"
+              >
+                <RefreshCw className="h-4 w-4" />
+                재인증
+              </button>
               <button
                 onClick={handleLogout}
                 className="btn-secondary flex items-center gap-2"
@@ -91,6 +114,19 @@ export default function Dashboard() {
           <p className="text-gray-600">
             원하시는 관리 기능을 선택해주세요
           </p>
+        </div>
+
+        {/* 재인증 안내 배너 */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-8 max-w-4xl mx-auto">
+          <div className="flex items-start">
+            <RefreshCw className="h-5 w-5 text-blue-600 mt-0.5 mr-3 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm text-blue-800">
+                <strong>주문 관리 기능을 처음 사용하시나요?</strong> 
+                주문 조회 권한이 새로 추가되었습니다. 상단의 "재인증" 버튼을 클릭하여 Cafe24에 다시 로그인해주세요.
+              </p>
+            </div>
+          </div>
         </div>
 
         <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">

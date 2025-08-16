@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore, doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDruR-6zx9lP26r8Omc1BzNa2inAKhPr54",
@@ -82,6 +82,18 @@ export const testFirestoreWrite = async () => {
     return true;
   } catch (error) {
     console.error('Firestore write test: 실패', error);
+    return false;
+  }
+};
+
+export const deleteToken = async (): Promise<boolean> => {
+  try {
+    console.log('🗑️ Cafe24 토큰 삭제 시도');
+    await deleteDoc(doc(db, 'tokens', 'cafe24'));
+    console.log('✅ Cafe24 토큰 삭제 완료');
+    return true;
+  } catch (error) {
+    console.error('❌ 토큰 삭제 실패:', error);
     return false;
   }
 };
