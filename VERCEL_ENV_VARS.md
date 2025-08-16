@@ -4,9 +4,10 @@
 
 ### 1. Cafe24 API 설정 (필수)
 ```
-CAFE24_CLIENT_ID=카페24_앱_클라이언트_ID
-CAFE24_CLIENT_SECRET=카페24_앱_클라이언트_시크릿
-CAFE24_REDIRECT_URI=https://spx-price.vercel.app/api/auth/callback
+NEXT_PUBLIC_CAFE24_MALL_ID=sopexkorea
+NEXT_PUBLIC_CAFE24_CLIENT_ID=카페24_앱_클라이언트_ID
+NEXT_PUBLIC_CAFE24_CLIENT_SECRET=카페24_앱_클라이언트_시크릿
+NEXT_PUBLIC_CAFE24_REDIRECT_URI=https://spx-price.vercel.app/api/auth/callback
 ```
 
 ### 2. Firebase 설정 (선택 - 현재 하드코딩됨)
@@ -34,9 +35,12 @@ NEXT_PUBLIC_FIREBASE_APP_ID=1:751338163184:web:6a86de741b4d8437c5ab35
 
 | Variable Name | Value | Environment |
 |---------------|-------|-------------|
-| `CAFE24_CLIENT_ID` | 카페24에서 발급받은 클라이언트 ID | Production |
-| `CAFE24_CLIENT_SECRET` | 카페24에서 발급받은 클라이언트 시크릿 | Production |
-| `CAFE24_REDIRECT_URI` | `https://spx-price.vercel.app/api/auth/callback` | Production |
+| `NEXT_PUBLIC_CAFE24_MALL_ID` | `sopexkorea` | Production |
+| `NEXT_PUBLIC_CAFE24_CLIENT_ID` | 카페24에서 발급받은 클라이언트 ID | Production |
+| `NEXT_PUBLIC_CAFE24_CLIENT_SECRET` | 카페24에서 발급받은 클라이언트 시크릿 | Production |
+| `NEXT_PUBLIC_CAFE24_REDIRECT_URI` | `https://spx-price.vercel.app/api/auth/callback` | Production |
+| `ADMIN_USERNAME` | 관리자 아이디 (예: sopex_admin) | Production |
+| `ADMIN_PASSWORD` | 관리자 비밀번호 | Production |
 
 ## 주의사항
 

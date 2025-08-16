@@ -1,9 +1,60 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getToken } from '@/lib/firebase';
+import { getToken, isTokenExpired, saveToken, Cafe24Token } from '@/lib/firebase';
+import axios from 'axios';
 
 // API 라우트를 동적으로 설정
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+
+// Cafe24 Base URL (상품 API와 동일하게 하드코딩)
+const CAFE24_BASE_URL = `https://sopexkorea.cafe24api.com/api/v2`;
+
+// 토큰 갱신 함수 (상품 API와 동일)
+async function refreshToken(refreshTokenValue: string): Promise<Cafe24Token | null> {
+  try {
+    console.log('🔄 주문 API - 토큰 갱신 시도...');
+    
+    const response = await axios.post(
+      `https://sopexkorea.cafe24api.com/api/v2/oauth/token`,
+      `grant_type=refresh_token&refresh_token=${refreshTokenValue}`,
+      {
+        headers: {
+          'Authorization': `Basic ${btoa(`${process.env.NEXT_PUBLIC_CAFE24_CLIENT_ID || 'your_client_id'}:${process.env.NEXT_PUBLIC_CAFE24_CLIENT_SECRET || 'your_client_secret'}`)}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+      }
+    );
+
+    const expiresIn = response.data.expires_in || 3600;
+    const newToken: Cafe24Token = {
+      access_token: response.data.access_token,
+      refresh_token: response.data.refresh_token || refreshTokenValue,
+      expires_at: Date.now() + (expiresIn * 1000),
+      token_type: response.data.token_type || 'Bearer',
+    };
+
+    console.log('✅ 주문 API - 토큰 갱신 성공');
+    await saveToken(newToken);
+    return newToken;
+  } catch (error) {
+    console.error('❌ 주문 API - 토큰 갱신 실패:', error);
+    return null;
+  }
+}
+
+// 유효한 토큰 얻기
+async function getValidToken(): Promise<string | null> {
+  const token = await getToken();
+  if (!token) return null;
+
+  if (isTokenExpired(token)) {
+    console.log('🔄 주문 API - 토큰이 만료됨, 갱신 시도...');
+    const refreshed = await refreshToken(token.refresh_token);
+    return refreshed ? refreshed.access_token : null;
+  }
+
+  return token.access_token;
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,14 +65,14 @@ export async function GET(request: NextRequest) {
     const offset = searchParams.get('offset') || '0';
     const orderStatus = searchParams.get('order_status') || '';
     
-    const token = await getToken();
-    if (!token) {
+    // 유효한 토큰 가져오기 (만료시 자동 갱신)
+    const accessToken = await getValidToken();
+    if (!accessToken) {
       return NextResponse.json({ error: '인증 토큰이 없습니다.' }, { status: 401 });
     }
 
-    // Cafe24 API URL 구성
-    const mallId = process.env.NEXT_PUBLIC_CAFE24_MALL_ID;
-    let apiUrl = `https://${mallId}.cafe24api.com/api/v2/admin/orders?limit=${limit}&offset=${offset}`;
+    // Cafe24 API URL 구성 (상품 API와 동일한 방식)
+    let apiUrl = `${CAFE24_BASE_URL}/admin/orders?limit=${limit}&offset=${offset}`;
     
     // 날짜 필터 추가 (T00:00:00 형식 추가)
     if (startDate) {
@@ -48,7 +99,7 @@ export async function GET(request: NextRequest) {
     const response = await fetch(apiUrl, {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${token.access_token}`,
+        'Authorization': `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
         'X-Cafe24-Api-Version': '2025-06-01'
       },
