@@ -55,7 +55,7 @@ export default function OrderManagement() {
   const [isLoading, setIsLoading] = useState(true);
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
-  const [selectedStatus, setSelectedStatus] = useState('');
+  const [activeTab, setActiveTab] = useState('입금전');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [lastUpdateTime, setLastUpdateTime] = useState<Date | null>(null);
@@ -105,13 +105,26 @@ export default function OrderManagement() {
     }
   };
 
+  // 탭별 상태 매핑
+  const getStatusByTab = (tab: string): string => {
+    const statusMap: Record<string, string> = {
+      '입금전': 'N00',
+      '상품준비중': 'N10',
+      '배송준비중': 'N22',
+      '배송중': 'N30',
+      '배송완료': 'N40'
+    };
+    return statusMap[tab] || '';
+  };
+
   const loadOrdersWithDates = async (startDateParam: string, endDateParam: string, offset = 0, append = false) => {
     setIsLoadingOrders(true);
     try {
       const params = new URLSearchParams();
       params.append('start_date', startDateParam);
       params.append('end_date', endDateParam);
-      if (selectedStatus) params.append('order_status', selectedStatus);
+      const statusCode = getStatusByTab(activeTab);
+      if (statusCode) params.append('order_status', statusCode);
       params.append('limit', '50');
       params.append('offset', offset.toString());
 
@@ -186,10 +199,13 @@ export default function OrderManagement() {
     }
   };
 
-  const handleSearch = () => {
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab);
     setOrders([]);
     setCurrentOffset(0);
-    loadOrders(0);
+    if (startDate && endDate) {
+      loadOrdersWithDates(startDate, endDate, 0, false);
+    }
   };
 
   const getStatusBadge = (status: string, statusText: string) => {
@@ -320,12 +336,12 @@ export default function OrderManagement() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* 필터 섹션 */}
+        {/* 날짜 선택 섹션 */}
         <div className="bg-white rounded-lg shadow p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">주문 검색</h2>
+            <h2 className="text-lg font-semibold text-gray-900">조회 기간</h2>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 시작일
@@ -333,7 +349,14 @@ export default function OrderManagement() {
               <input
                 type="date"
                 value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
+                onChange={(e) => {
+                  setStartDate(e.target.value);
+                  if (e.target.value && endDate) {
+                    setOrders([]);
+                    setCurrentOffset(0);
+                    loadOrdersWithDates(e.target.value, endDate, 0, false);
+                  }
+                }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -344,51 +367,43 @@ export default function OrderManagement() {
               <input
                 type="date"
                 value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
+                onChange={(e) => {
+                  setEndDate(e.target.value);
+                  if (startDate && e.target.value) {
+                    setOrders([]);
+                    setCurrentOffset(0);
+                    loadOrdersWithDates(startDate, e.target.value, 0, false);
+                  }
+                }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                주문 상태
-              </label>
-              <select
-                value={selectedStatus}
-                onChange={(e) => setSelectedStatus(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">전체</option>
-                <option value="N00">입금전</option>
-                <option value="N10">상품준비중</option>
-                <option value="N20">배송대기</option>
-                <option value="N21">배송보류</option>
-                <option value="N22">배송준비중</option>
-                <option value="N30">배송중</option>
-                <option value="N40">배송완료</option>
-                <option value="C00">취소</option>
-                <option value="C10">반품</option>
-                <option value="C20">교환</option>
-                <option value="C40">환불</option>
-              </select>
-            </div>
-            <div className="flex items-end">
-              <button
-                onClick={handleSearch}
-                disabled={isLoadingOrders}
-                className="w-full px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
-              >
-                <Search className="h-4 w-4" />
-                검색
-              </button>
             </div>
           </div>
         </div>
 
         {/* 주문 목록 */}
         <div className="bg-white rounded-lg shadow overflow-hidden">
+          {/* 상태별 탭 */}
+          <div className="px-6 pt-4 border-b border-gray-200">
+            <div className="flex space-x-8">
+              {['입금전', '상품준비중', '배송준비중', '배송중', '배송완료'].map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => handleTabChange(tab)}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === tab
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
             <h2 className="text-lg font-semibold text-gray-900">
-              주문 목록 {orders.length > 0 && `(${orders.length}건)`}
+              {activeTab} 주문 {orders.length > 0 && `(${orders.length}건)`}
             </h2>
           </div>
           
