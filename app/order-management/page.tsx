@@ -132,13 +132,15 @@ export default function OrderManagement() {
     return statusMap[tab] || '';
   };
 
-  const loadOrdersWithDates = async (startDateParam: string, endDateParam: string, offset = 0, append = false) => {
+  const loadOrdersWithDates = async (startDateParam: string, endDateParam: string, offset = 0, append = false, targetTab?: string) => {
     setIsLoadingOrders(true);
     try {
       const params = new URLSearchParams();
       params.append('start_date', startDateParam);
       params.append('end_date', endDateParam);
-      const statusCode = getStatusByTab(activeTab);
+      const currentTab = targetTab || activeTab;
+      const statusCode = getStatusByTab(currentTab);
+      console.log(`API 호출: 탭=${currentTab}, 상태코드=${statusCode}`);
       if (statusCode) {
         params.append('order_status', statusCode);
       }
@@ -148,7 +150,7 @@ export default function OrderManagement() {
       const response = await axios.get(`/api/orders?${params.toString()}`);
       
       // 배송중 탭인 경우 배송 정보도 함께 로드
-      const ordersWithShipments = await loadShipmentInfoForOrders(response.data.orders);
+      const ordersWithShipments = await loadShipmentInfoForOrders(response.data.orders, currentTab);
       
       if (append) {
         setOrders(prev => [...prev, ...ordersWithShipments]);
@@ -219,12 +221,20 @@ export default function OrderManagement() {
     }
   };
 
-  const handleTabChange = (tab: string) => {
+  const handleTabChange = async (tab: string) => {
+    console.log(`탭 변경: ${activeTab} -> ${tab}`);
+    
+    // 즉시 탭 상태와 주문 목록 초기화
     setActiveTab(tab);
     setOrders([]);
     setCurrentOffset(0);
+    setTotalOrderCount(0);
+    setHasMore(false);
+    
+    // 날짜가 설정되어 있으면 새로운 탭의 데이터 로드
     if (startDate && endDate) {
-      loadOrdersWithDates(startDate, endDate, 0, false);
+      console.log(`${tab} 탭 데이터 로드 시작`);
+      await loadOrdersWithDates(startDate, endDate, 0, false, tab);
     }
   };
 
@@ -247,47 +257,39 @@ export default function OrderManagement() {
     }
   };
 
-  // 배송중 상태의 주문들에 대해 배송 정보를 배치로 로드 (40건 제한 고려)
-  const loadShipmentInfoForOrders = async (orders: Order[]) => {
-    if (activeTab !== '배송중') return orders;
+  // 배송중 상태의 주문들에 대해 배송 정보를 순차적으로 로드 (Rate Limit 완전 방지)
+  const loadShipmentInfoForOrders = async (orders: Order[], targetTab?: string) => {
+    const currentTab = targetTab || activeTab;
+    if (currentTab !== '배송중') return orders;
     
     setIsLoadingShipments(true);
     
     try {
-      // 40건 제한에 맞게 최대 35건까지만 병렬 처리 (여유 마진 5건)
-      const maxBatchSize = 35;
-      const delayMs = 100; // 100ms 딜레이 (적당한 간격)
       const ordersWithShipments: Order[] = [];
+      const delayMs = 150; // 150ms 딜레이 (순차 처리)
       
       setShipmentLoadingProgress({ current: 0, total: orders.length });
       
-      // 주문이 35건보다 많으면 배치로 나누어 처리
-      for (let i = 0; i < orders.length; i += maxBatchSize) {
-        const batch = orders.slice(i, i + maxBatchSize);
+      // 각 주문을 순차적으로 처리 (Rate Limit 완전 방지)
+      for (let i = 0; i < orders.length; i++) {
+        const order = orders[i];
         
-        console.log(`배송 정보 조회 중: ${i + 1}-${Math.min(i + maxBatchSize, orders.length)}/${orders.length}건`);
+        console.log(`배송 정보 조회 중: ${i + 1}/${orders.length}건 (${order.order_id})`);
         
-        const batchResults = await Promise.all(
-          batch.map(async (order) => {
-            const shipments = await loadShipmentInfo(order.order_id);
-            return {
-              ...order,
-              shipments
-            };
-          })
-        );
-        
-        ordersWithShipments.push(...batchResults);
+        const shipments = await loadShipmentInfo(order.order_id);
+        ordersWithShipments.push({
+          ...order,
+          shipments
+        });
         
         // 진행 상황 업데이트
         setShipmentLoadingProgress({ 
-          current: Math.min(i + maxBatchSize, orders.length), 
+          current: i + 1, 
           total: orders.length 
         });
         
-        // 마지막 배치가 아닌 경우 딜레이 추가 (Rate limit 방지)
-        if (i + maxBatchSize < orders.length) {
-          console.log(`다음 배치까지 ${delayMs}ms 대기...`);
+        // 마지막 주문이 아닌 경우 딜레이
+        if (i < orders.length - 1) {
           await delay(delayMs);
         }
       }
