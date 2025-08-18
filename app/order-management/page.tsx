@@ -36,6 +36,19 @@ interface Order {
   tracking_no: string;
   
   items: OrderItem[];
+  shipments?: ShipmentInfo[];
+}
+
+interface ShipmentInfo {
+  shipping_code: string;
+  tracking_no: string;
+  tracking_no_updated_date: string;
+  shipping_company_code: string;
+  shipping_company_name: string;
+  items: {
+    order_item_code: string;
+    status: string;
+  }[];
 }
 
 interface OrderItem {
@@ -63,6 +76,13 @@ export default function OrderManagement() {
   const [totalOrderCount, setTotalOrderCount] = useState(0);
   const [currentOffset, setCurrentOffset] = useState(0);
   const [hasMore, setHasMore] = useState(false);
+  const [tabCounts, setTabCounts] = useState<Record<string, number>>({
+    '입금전': 0,
+    '상품준비중': 0,
+    '배송준비중': 0,
+    '배송중': 0,
+    '배송완료': 0
+  });
   const router = useRouter();
 
   useEffect(() => {
@@ -93,9 +113,12 @@ export default function OrderManagement() {
       const token = await getToken();
       if (token) {
         setIsAuthenticated(true);
-        // 날짜가 설정된 후에 주문 로드
+        // 날짜가 설정된 후에 주문 로드 및 탭 카운트 로드
         if (initialStartDate && initialEndDate) {
-          setTimeout(() => loadOrdersWithDates(initialStartDate, initialEndDate), 500);
+          setTimeout(() => {
+            loadOrdersWithDates(initialStartDate, initialEndDate);
+            loadAllTabCounts(initialStartDate, initialEndDate);
+          }, 500);
         }
       }
     } catch (error) {
@@ -106,15 +129,15 @@ export default function OrderManagement() {
   };
 
   // 탭별 상태 매핑
-  const getStatusByTab = (tab: string): string => {
-    const statusMap: Record<string, string> = {
-      '입금전': 'N00',
-      '상품준비중': 'N10',
-      '배송준비중': 'N22',
-      '배송중': 'N30',
-      '배송완료': 'N40'
+  const getStatusByTab = (tab: string): string[] => {
+    const statusMap: Record<string, string[]> = {
+      '입금전': ['N00'],
+      '상품준비중': ['N10'],
+      '배송준비중': ['N20', 'N21', 'N22'], // 배송대기, 배송보류 포함
+      '배송중': ['N30'],
+      '배송완료': ['N40']
     };
-    return statusMap[tab] || '';
+    return statusMap[tab] || [];
   };
 
   const loadOrdersWithDates = async (startDateParam: string, endDateParam: string, offset = 0, append = false) => {
@@ -123,23 +146,37 @@ export default function OrderManagement() {
       const params = new URLSearchParams();
       params.append('start_date', startDateParam);
       params.append('end_date', endDateParam);
-      const statusCode = getStatusByTab(activeTab);
-      if (statusCode) params.append('order_status', statusCode);
-      params.append('limit', '50');
+      const statusCodes = getStatusByTab(activeTab);
+      if (statusCodes.length > 0) {
+        // 여러 상태코드는 콤마로 구분하여 전달
+        params.append('order_status', statusCodes.join(','));
+      }
+      params.append('limit', '100');
       params.append('offset', offset.toString());
 
       const response = await axios.get(`/api/orders?${params.toString()}`);
       
+      // 배송중 탭인 경우 배송 정보도 함께 로드
+      const ordersWithShipments = await loadShipmentInfoForOrders(response.data.orders);
+      
       if (append) {
-        setOrders(prev => [...prev, ...response.data.orders]);
+        setOrders(prev => [...prev, ...ordersWithShipments]);
       } else {
-        setOrders(response.data.orders);
+        setOrders(ordersWithShipments);
       }
       
       setTotalOrderCount(response.data.count);
       setHasMore(response.data.has_next);
       setCurrentOffset(offset);
       setLastUpdateTime(new Date());
+      
+      // 현재 탭의 카운트 업데이트
+      if (!append) {
+        setTabCounts(prev => ({
+          ...prev,
+          [activeTab]: response.data.count
+        }));
+      }
       
       if (response.data.orders.length === 0 && offset === 0) {
         toast('조회된 주문이 없습니다.', { icon: '📋' });
@@ -195,7 +232,7 @@ export default function OrderManagement() {
 
   const loadMoreOrders = () => {
     if (!isLoadingOrders && hasMore) {
-      loadOrders(currentOffset + 50, true);
+      loadOrders(currentOffset + 100, true);
     }
   };
 
@@ -206,6 +243,62 @@ export default function OrderManagement() {
     if (startDate && endDate) {
       loadOrdersWithDates(startDate, endDate, 0, false);
     }
+  };
+
+  // 모든 탭의 카운트를 가져오는 함수
+  const loadAllTabCounts = async (startDateParam: string, endDateParam: string) => {
+    const tabs = ['입금전', '상품준비중', '배송준비중', '배송중', '배송완료'];
+    const newCounts: Record<string, number> = {};
+    
+    for (const tab of tabs) {
+      try {
+        const statusCodes = getStatusByTab(tab);
+        const params = new URLSearchParams();
+        params.append('start_date', startDateParam);
+        params.append('end_date', endDateParam);
+        if (statusCodes.length > 0) {
+          params.append('order_status', statusCodes.join(','));
+        }
+        params.append('limit', '1'); // 카운트만 필요하므로 1개만 조회
+        params.append('offset', '0');
+
+        const response = await axios.get(`/api/orders?${params.toString()}`);
+        newCounts[tab] = response.data.count || 0;
+      } catch (error) {
+        console.error(`${tab} 카운트 조회 실패:`, error);
+        newCounts[tab] = 0;
+      }
+    }
+    
+    setTabCounts(newCounts);
+  };
+
+  // 배송 정보 조회 함수
+  const loadShipmentInfo = async (orderId: string): Promise<ShipmentInfo[]> => {
+    try {
+      const response = await axios.get(`/api/orders/${orderId}/shipments`);
+      return response.data.shipments || [];
+    } catch (error) {
+      console.error(`주문 ${orderId} 배송 정보 조회 실패:`, error);
+      return [];
+    }
+  };
+
+  // 배송중 상태의 주문들에 대해 배송 정보를 추가로 로드
+  const loadShipmentInfoForOrders = async (orders: Order[]) => {
+    if (activeTab !== '배송중') return orders;
+    
+    const ordersWithShipments = await Promise.all(
+      orders.map(async (order) => {
+        const shipments = await loadShipmentInfo(order.order_id);
+        return {
+          ...order,
+          shipments
+        };
+      })
+    );
+    
+    return ordersWithShipments;
   };
 
   const getStatusBadge = (status: string, statusText: string) => {
@@ -355,6 +448,7 @@ export default function OrderManagement() {
                     setOrders([]);
                     setCurrentOffset(0);
                     loadOrdersWithDates(e.target.value, endDate, 0, false);
+                    loadAllTabCounts(e.target.value, endDate);
                   }
                 }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -373,6 +467,7 @@ export default function OrderManagement() {
                     setOrders([]);
                     setCurrentOffset(0);
                     loadOrdersWithDates(startDate, e.target.value, 0, false);
+                    loadAllTabCounts(startDate, e.target.value);
                   }
                 }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -384,19 +479,28 @@ export default function OrderManagement() {
         {/* 주문 목록 */}
         <div className="bg-white rounded-lg shadow overflow-hidden">
           {/* 상태별 탭 */}
-          <div className="px-6 pt-4 border-b border-gray-200">
-            <div className="flex space-x-8">
+          <div className="px-6 pt-6 pb-2 border-b border-gray-200 bg-gray-50">
+            <div className="flex space-x-4">
               {['입금전', '상품준비중', '배송준비중', '배송중', '배송완료'].map((tab) => (
                 <button
                   key={tab}
                   onClick={() => handleTabChange(tab)}
-                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                  className={`relative px-6 py-4 rounded-lg font-semibold text-base transition-all duration-200 min-w-[120px] ${
                     activeTab === tab
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      ? 'bg-blue-600 text-white shadow-lg transform -translate-y-1'
+                      : 'bg-white text-gray-600 hover:text-gray-800 hover:bg-gray-100 shadow-sm border border-gray-200'
                   }`}
                 >
-                  {tab}
+                  <div className="flex flex-col items-center space-y-1">
+                    <span>{tab}</span>
+                    <span className={`text-xs font-bold px-2 py-1 rounded-full ${
+                      activeTab === tab 
+                        ? 'bg-blue-500 text-white' 
+                        : 'bg-gray-200 text-gray-600'
+                    }`}>
+                      {tabCounts[tab].toLocaleString()}건
+                    </span>
+                  </div>
                 </button>
               ))}
             </div>
@@ -478,7 +582,22 @@ export default function OrderManagement() {
                             {formatPrice(order.payment_amount, order.currency)}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            {getStatusBadge(order.order_status, order.order_status_text)}
+                            <div className="space-y-1">
+                              {getStatusBadge(order.order_status, order.order_status_text)}
+                              {/* 배송중 탭에서 배송번호 표시 */}
+                              {activeTab === '배송중' && order.shipments && order.shipments.length > 0 && (
+                                <div className="text-xs text-blue-600 space-y-1">
+                                  {order.shipments.map((shipment, idx) => (
+                                    <div key={idx} className="flex flex-col">
+                                      <span className="font-mono">배송: {shipment.shipping_code}</span>
+                                      {shipment.tracking_no && (
+                                        <span className="font-mono">송장: {shipment.tracking_no}</span>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm">
                             <button
@@ -509,6 +628,51 @@ export default function OrderManagement() {
                                       <div>
                                         <span className="text-gray-500">송장번호:</span>
                                         <p className="text-gray-900">{order.shipping_company} - {order.tracking_no}</p>
+                                      </div>
+                                    )}
+                                    
+                                    {/* 배송중 탭에서 추가 배송 정보 표시 */}
+                                    {activeTab === '배송중' && order.shipments && order.shipments.length > 0 && (
+                                      <div>
+                                        <span className="text-gray-500">배송 상세정보:</span>
+                                        <div className="mt-2 space-y-2">
+                                          {order.shipments.map((shipment, idx) => (
+                                            <div key={idx} className="bg-blue-50 p-3 rounded-lg border-l-4 border-blue-400">
+                                              <div className="grid grid-cols-2 gap-2 text-sm">
+                                                <div>
+                                                  <span className="font-medium text-blue-700">배송번호:</span>
+                                                  <p className="text-gray-800 font-mono">{shipment.shipping_code}</p>
+                                                </div>
+                                                <div>
+                                                  <span className="font-medium text-blue-700">송장번호:</span>
+                                                  <p className="text-gray-800 font-mono">{shipment.tracking_no || '-'}</p>
+                                                </div>
+                                                <div>
+                                                  <span className="font-medium text-blue-700">배송업체:</span>
+                                                  <p className="text-gray-800">{shipment.shipping_company_name}</p>
+                                                </div>
+                                                {shipment.tracking_no_updated_date && (
+                                                  <div>
+                                                    <span className="font-medium text-blue-700">송장 등록일:</span>
+                                                    <p className="text-gray-800">{formatDate(shipment.tracking_no_updated_date)}</p>
+                                                  </div>
+                                                )}
+                                              </div>
+                                              {shipment.items && shipment.items.length > 0 && (
+                                                <div className="mt-2">
+                                                  <span className="font-medium text-blue-700 block mb-1">포함 상품:</span>
+                                                  <div className="flex flex-wrap gap-1">
+                                                    {shipment.items.map((item, itemIdx) => (
+                                                      <span key={itemIdx} className="inline-block bg-white px-2 py-1 rounded text-xs text-gray-700 border">
+                                                        {item.order_item_code} ({item.status})
+                                                      </span>
+                                                    ))}
+                                                  </div>
+                                                </div>
+                                              )}
+                                            </div>
+                                          ))}
+                                        </div>
                                       </div>
                                     )}
                                   </div>
