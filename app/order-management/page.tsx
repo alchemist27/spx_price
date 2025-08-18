@@ -76,13 +76,8 @@ export default function OrderManagement() {
   const [totalOrderCount, setTotalOrderCount] = useState(0);
   const [currentOffset, setCurrentOffset] = useState(0);
   const [hasMore, setHasMore] = useState(false);
-  const [tabCounts, setTabCounts] = useState<Record<string, number>>({
-    '입금전': 0,
-    '상품준비중': 0,
-    '배송준비중': 0,
-    '배송중': 0,
-    '배송완료': 0
-  });
+  const [isLoadingShipments, setIsLoadingShipments] = useState(false);
+  const [shipmentLoadingProgress, setShipmentLoadingProgress] = useState({ current: 0, total: 0 });
   const router = useRouter();
 
   useEffect(() => {
@@ -113,12 +108,9 @@ export default function OrderManagement() {
       const token = await getToken();
       if (token) {
         setIsAuthenticated(true);
-        // 날짜가 설정된 후에 주문 로드 및 탭 카운트 로드
+        // 날짜가 설정된 후에 주문 로드
         if (initialStartDate && initialEndDate) {
-          setTimeout(() => {
-            loadOrdersWithDates(initialStartDate, initialEndDate);
-            loadAllTabCounts(initialStartDate, initialEndDate);
-          }, 500);
+          setTimeout(() => loadOrdersWithDates(initialStartDate, initialEndDate), 500);
         }
       }
     } catch (error) {
@@ -129,15 +121,15 @@ export default function OrderManagement() {
   };
 
   // 탭별 상태 매핑
-  const getStatusByTab = (tab: string): string[] => {
-    const statusMap: Record<string, string[]> = {
-      '입금전': ['N00'],
-      '상품준비중': ['N10'],
-      '배송준비중': ['N20', 'N21', 'N22'], // 배송대기, 배송보류 포함
-      '배송중': ['N30'],
-      '배송완료': ['N40']
+  const getStatusByTab = (tab: string): string => {
+    const statusMap: Record<string, string> = {
+      '입금전': 'N00',
+      '상품준비중': 'N10', 
+      '배송준비중': 'N20',
+      '배송중': 'N30',
+      '배송완료': 'N40'
     };
-    return statusMap[tab] || [];
+    return statusMap[tab] || '';
   };
 
   const loadOrdersWithDates = async (startDateParam: string, endDateParam: string, offset = 0, append = false) => {
@@ -146,10 +138,9 @@ export default function OrderManagement() {
       const params = new URLSearchParams();
       params.append('start_date', startDateParam);
       params.append('end_date', endDateParam);
-      const statusCodes = getStatusByTab(activeTab);
-      if (statusCodes.length > 0) {
-        // 여러 상태코드는 콤마로 구분하여 전달
-        params.append('order_status', statusCodes.join(','));
+      const statusCode = getStatusByTab(activeTab);
+      if (statusCode) {
+        params.append('order_status', statusCode);
       }
       params.append('limit', '100');
       params.append('offset', offset.toString());
@@ -169,14 +160,6 @@ export default function OrderManagement() {
       setHasMore(response.data.has_next);
       setCurrentOffset(offset);
       setLastUpdateTime(new Date());
-      
-      // 현재 탭의 카운트 업데이트
-      if (!append) {
-        setTabCounts(prev => ({
-          ...prev,
-          [activeTab]: response.data.count
-        }));
-      }
       
       if (response.data.orders.length === 0 && offset === 0) {
         toast('조회된 주문이 없습니다.', { icon: '📋' });
@@ -245,60 +228,74 @@ export default function OrderManagement() {
     }
   };
 
-  // 모든 탭의 카운트를 가져오는 함수
-  const loadAllTabCounts = async (startDateParam: string, endDateParam: string) => {
-    const tabs = ['입금전', '상품준비중', '배송준비중', '배송중', '배송완료'];
-    const newCounts: Record<string, number> = {};
-    
-    for (const tab of tabs) {
-      try {
-        const statusCodes = getStatusByTab(tab);
-        const params = new URLSearchParams();
-        params.append('start_date', startDateParam);
-        params.append('end_date', endDateParam);
-        if (statusCodes.length > 0) {
-          params.append('order_status', statusCodes.join(','));
-        }
-        params.append('limit', '1'); // 카운트만 필요하므로 1개만 조회
-        params.append('offset', '0');
 
-        const response = await axios.get(`/api/orders?${params.toString()}`);
-        newCounts[tab] = response.data.count || 0;
-      } catch (error) {
-        console.error(`${tab} 카운트 조회 실패:`, error);
-        newCounts[tab] = 0;
-      }
-    }
-    
-    setTabCounts(newCounts);
-  };
+  // 딜레이 함수
+  const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-  // 배송 정보 조회 함수
+  // 배송 정보 조회 함수 (간단한 재시도)
   const loadShipmentInfo = async (orderId: string): Promise<ShipmentInfo[]> => {
     try {
       const response = await axios.get(`/api/orders/${orderId}/shipments`);
       return response.data.shipments || [];
-    } catch (error) {
-      console.error(`주문 ${orderId} 배송 정보 조회 실패:`, error);
+    } catch (error: any) {
+      if (error.response?.status === 429) {
+        console.warn(`주문 ${orderId} Rate Limit - 스킵`);
+      } else {
+        console.error(`주문 ${orderId} 배송 정보 조회 실패:`, error);
+      }
       return [];
     }
   };
 
-  // 배송중 상태의 주문들에 대해 배송 정보를 추가로 로드
+  // 배송중 상태의 주문들에 대해 배송 정보를 배치로 로드 (40건 제한 고려)
   const loadShipmentInfoForOrders = async (orders: Order[]) => {
     if (activeTab !== '배송중') return orders;
     
-    const ordersWithShipments = await Promise.all(
-      orders.map(async (order) => {
-        const shipments = await loadShipmentInfo(order.order_id);
-        return {
-          ...order,
-          shipments
-        };
-      })
-    );
+    setIsLoadingShipments(true);
     
-    return ordersWithShipments;
+    try {
+      // 40건 제한에 맞게 최대 35건까지만 병렬 처리 (여유 마진 5건)
+      const maxBatchSize = 35;
+      const delayMs = 100; // 100ms 딜레이 (적당한 간격)
+      const ordersWithShipments: Order[] = [];
+      
+      setShipmentLoadingProgress({ current: 0, total: orders.length });
+      
+      // 주문이 35건보다 많으면 배치로 나누어 처리
+      for (let i = 0; i < orders.length; i += maxBatchSize) {
+        const batch = orders.slice(i, i + maxBatchSize);
+        
+        console.log(`배송 정보 조회 중: ${i + 1}-${Math.min(i + maxBatchSize, orders.length)}/${orders.length}건`);
+        
+        const batchResults = await Promise.all(
+          batch.map(async (order) => {
+            const shipments = await loadShipmentInfo(order.order_id);
+            return {
+              ...order,
+              shipments
+            };
+          })
+        );
+        
+        ordersWithShipments.push(...batchResults);
+        
+        // 진행 상황 업데이트
+        setShipmentLoadingProgress({ 
+          current: Math.min(i + maxBatchSize, orders.length), 
+          total: orders.length 
+        });
+        
+        // 마지막 배치가 아닌 경우 딜레이 추가 (Rate limit 방지)
+        if (i + maxBatchSize < orders.length) {
+          console.log(`다음 배치까지 ${delayMs}ms 대기...`);
+          await delay(delayMs);
+        }
+      }
+      
+      return ordersWithShipments;
+    } finally {
+      setIsLoadingShipments(false);
+    }
   };
 
   const getStatusBadge = (status: string, statusText: string) => {
@@ -448,7 +445,6 @@ export default function OrderManagement() {
                     setOrders([]);
                     setCurrentOffset(0);
                     loadOrdersWithDates(e.target.value, endDate, 0, false);
-                    loadAllTabCounts(e.target.value, endDate);
                   }
                 }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -467,7 +463,6 @@ export default function OrderManagement() {
                     setOrders([]);
                     setCurrentOffset(0);
                     loadOrdersWithDates(startDate, e.target.value, 0, false);
-                    loadAllTabCounts(startDate, e.target.value);
                   }
                 }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -485,22 +480,13 @@ export default function OrderManagement() {
                 <button
                   key={tab}
                   onClick={() => handleTabChange(tab)}
-                  className={`relative px-6 py-4 rounded-lg font-semibold text-base transition-all duration-200 min-w-[120px] ${
+                  className={`relative px-6 py-3 rounded-lg font-semibold text-base transition-all duration-200 ${
                     activeTab === tab
-                      ? 'bg-blue-600 text-white shadow-lg transform -translate-y-1'
+                      ? 'bg-blue-600 text-white shadow-lg'
                       : 'bg-white text-gray-600 hover:text-gray-800 hover:bg-gray-100 shadow-sm border border-gray-200'
                   }`}
                 >
-                  <div className="flex flex-col items-center space-y-1">
-                    <span>{tab}</span>
-                    <span className={`text-xs font-bold px-2 py-1 rounded-full ${
-                      activeTab === tab 
-                        ? 'bg-blue-500 text-white' 
-                        : 'bg-gray-200 text-gray-600'
-                    }`}>
-                      {tabCounts[tab].toLocaleString()}건
-                    </span>
-                  </div>
+                  <span>{tab}</span>
                 </button>
               ))}
             </div>
@@ -508,6 +494,12 @@ export default function OrderManagement() {
           <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
             <h2 className="text-lg font-semibold text-gray-900">
               {activeTab} 주문 {orders.length > 0 && `(${orders.length}건)`}
+              {isLoadingShipments && activeTab === '배송중' && (
+                <span className="ml-2 text-sm text-blue-600">
+                  <RefreshCw className="inline h-4 w-4 animate-spin mr-1" />
+                  배송 정보 로딩 중... ({shipmentLoadingProgress.current}/{shipmentLoadingProgress.total})
+                </span>
+              )}
             </h2>
           </div>
           
