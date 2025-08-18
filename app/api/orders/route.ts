@@ -86,12 +86,9 @@ export async function GET(request: NextRequest) {
       apiUrl += `&end_date=${encodeURIComponent(formattedEndDate)}`;
     }
     
-    // 주문 상태 필터 추가 (여러 상태 지원)
+    // 주문 상태 필터 추가
     if (orderStatus) {
-      const statusArray = orderStatus.split(',');
-      statusArray.forEach(status => {
-        apiUrl += `&order_status=${status.trim()}`;
-      });
+      apiUrl += `&order_status=${orderStatus}`;
     }
 
     // 배송정보 포함
