@@ -86,9 +86,12 @@ export async function GET(request: NextRequest) {
       apiUrl += `&end_date=${encodeURIComponent(formattedEndDate)}`;
     }
     
-    // 주문 상태 필터 추가
+    // 주문 상태 필터 추가 (여러 상태 지원)
     if (orderStatus) {
-      apiUrl += `&order_status=${orderStatus}`;
+      const statusArray = orderStatus.split(',');
+      statusArray.forEach(status => {
+        apiUrl += `&order_status=${status.trim()}`;
+      });
     }
 
     // 배송정보 포함
@@ -263,13 +266,13 @@ function getOrderStatus(order: any): string {
     const shippingStatus = order.shipping_status;
     
     if (shippingStatus === 'T') {
-      return 'N40'; // T = 배송완료
+      return 'N40'; // T = 배송완료  
     } else if (shippingStatus === 'M') {
       return 'N30'; // M = 배송중
     } else if (shippingStatus === 'P') {
-      return 'N22'; // P = 배송준비중
+      return 'N20'; // P = 배송준비중 (N22가 아니라 N20으로 수정)
     } else if (shippingStatus === 'W') {
-      return 'N20'; // W = 배송대기
+      return 'N21'; // W = 배송대기 (N20이 아니라 N21로 수정)
     } else {
       return 'N10'; // F 또는 기타 = 상품준비중
     }
