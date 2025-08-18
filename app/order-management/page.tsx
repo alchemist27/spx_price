@@ -78,6 +78,8 @@ export default function OrderManagement() {
   const [hasMore, setHasMore] = useState(false);
   const [isLoadingShipments, setIsLoadingShipments] = useState(false);
   const [shipmentLoadingProgress, setShipmentLoadingProgress] = useState({ current: 0, total: 0 });
+  const [abortShipmentLoading, setAbortShipmentLoading] = useState(false);
+  const [shipmentCache, setShipmentCache] = useState<Map<string, {data: ShipmentInfo[], timestamp: number}>>(new Map());
   const router = useRouter();
 
   useEffect(() => {
@@ -101,6 +103,12 @@ export default function OrderManagement() {
     } else {
       setIsLoading(false);
     }
+    
+    // 컴포넌트 언마운트시 배송 조회 중단
+    return () => {
+      setAbortShipmentLoading(true);
+      setIsLoadingShipments(false);
+    };
   }, []);
 
   const checkAuthStatus = async (initialStartDate?: string, initialEndDate?: string) => {
@@ -144,7 +152,7 @@ export default function OrderManagement() {
       if (statusCode) {
         params.append('order_status', statusCode);
       }
-      params.append('limit', '100');
+      params.append('limit', '20');
       params.append('offset', offset.toString());
 
       const response = await axios.get(`/api/orders?${params.toString()}`);
@@ -202,6 +210,9 @@ export default function OrderManagement() {
   };
 
   const handleBack = () => {
+    // 페이지를 벗어날 때 배송 조회 중단
+    setAbortShipmentLoading(true);
+    setIsLoadingShipments(false);
     router.push('/dashboard');
   };
 
@@ -217,12 +228,16 @@ export default function OrderManagement() {
 
   const loadMoreOrders = () => {
     if (!isLoadingOrders && hasMore) {
-      loadOrders(currentOffset + 100, true);
+      loadOrders(currentOffset + 20, true);
     }
   };
 
   const handleTabChange = async (tab: string) => {
     console.log(`탭 변경: ${activeTab} -> ${tab}`);
+    
+    // 진행 중인 배송 조회 중단
+    setAbortShipmentLoading(true);
+    setIsLoadingShipments(false);
     
     // 즉시 탭 상태와 주문 목록 초기화
     setActiveTab(tab);
@@ -234,6 +249,7 @@ export default function OrderManagement() {
     // 날짜가 설정되어 있으면 새로운 탭의 데이터 로드
     if (startDate && endDate) {
       console.log(`${tab} 탭 데이터 로드 시작`);
+      setAbortShipmentLoading(false); // 새로운 조회를 위해 중단 플래그 리셋
       await loadOrdersWithDates(startDate, endDate, 0, false, tab);
     }
   };
@@ -242,11 +258,58 @@ export default function OrderManagement() {
   // 딜레이 함수
   const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-  // 배송 정보 조회 함수 (간단한 재시도)
+  // 캐시 확인 및 만료 검사 함수
+  const getCachedShipmentInfo = (orderId: string): ShipmentInfo[] | null => {
+    const cached = shipmentCache.get(orderId);
+    if (!cached) return null;
+    
+    const now = Date.now();
+    const cacheAge = now - cached.timestamp;
+    const CACHE_DURATION = 20 * 60 * 1000; // 20분
+    
+    if (cacheAge > CACHE_DURATION) {
+      // 캐시 만료, 제거
+      setShipmentCache(prev => {
+        const newCache = new Map(prev);
+        newCache.delete(orderId);
+        return newCache;
+      });
+      return null;
+    }
+    
+    return cached.data;
+  };
+
+  // 캐시에 배송 정보 저장
+  const setCachedShipmentInfo = (orderId: string, shipments: ShipmentInfo[]) => {
+    setShipmentCache(prev => {
+      const newCache = new Map(prev);
+      newCache.set(orderId, {
+        data: shipments,
+        timestamp: Date.now()
+      });
+      return newCache;
+    });
+  };
+
+  // 배송 정보 조회 함수 (캐시 포함)
   const loadShipmentInfo = async (orderId: string): Promise<ShipmentInfo[]> => {
+    // 캐시 확인
+    const cachedData = getCachedShipmentInfo(orderId);
+    if (cachedData) {
+      console.log(`주문 ${orderId} 배송 정보 캐시 사용`);
+      return cachedData;
+    }
+    
     try {
+      console.log(`주문 ${orderId} 배송 정보 API 호출`);
       const response = await axios.get(`/api/orders/${orderId}/shipments`);
-      return response.data.shipments || [];
+      const shipments = response.data.shipments || [];
+      
+      // 캐시에 저장
+      setCachedShipmentInfo(orderId, shipments);
+      
+      return shipments;
     } catch (error: any) {
       if (error.response?.status === 429) {
         console.warn(`주문 ${orderId} Rate Limit - 스킵`);
@@ -270,11 +333,46 @@ export default function OrderManagement() {
       
       setShipmentLoadingProgress({ current: 0, total: orders.length });
       
-      // 각 주문을 순차적으로 처리 (Rate Limit 완전 방지)
+      // 캐시된 주문과 API 호출이 필요한 주문 분리
+      const cachedOrders: Order[] = [];
+      const uncachedOrders: {order: Order, index: number}[] = [];
+      
       for (let i = 0; i < orders.length; i++) {
         const order = orders[i];
+        const cachedData = getCachedShipmentInfo(order.order_id);
         
-        console.log(`배송 정보 조회 중: ${i + 1}/${orders.length}건 (${order.order_id})`);
+        if (cachedData) {
+          cachedOrders.push({
+            ...order,
+            shipments: cachedData
+          });
+        } else {
+          uncachedOrders.push({order, index: i});
+        }
+      }
+      
+      console.log(`배송 정보 조회: 캐시 ${cachedOrders.length}건, API 호출 ${uncachedOrders.length}건`);
+      
+      // 캐시된 주문은 즉시 추가
+      ordersWithShipments.push(...cachedOrders);
+      
+      // 진행 상황 업데이트 (캐시된 것들)
+      setShipmentLoadingProgress({ 
+        current: cachedOrders.length, 
+        total: orders.length 
+      });
+      
+      // API 호출이 필요한 주문들을 순차 처리
+      for (let i = 0; i < uncachedOrders.length; i++) {
+        // 중단 플래그 확인
+        if (abortShipmentLoading) {
+          console.log('배송 조회 중단됨');
+          break;
+        }
+        
+        const {order} = uncachedOrders[i];
+        
+        console.log(`배송 정보 조회 중: ${cachedOrders.length + i + 1}/${orders.length}건 (${order.order_id})`);
         
         const shipments = await loadShipmentInfo(order.order_id);
         ordersWithShipments.push({
@@ -284,15 +382,22 @@ export default function OrderManagement() {
         
         // 진행 상황 업데이트
         setShipmentLoadingProgress({ 
-          current: i + 1, 
+          current: cachedOrders.length + i + 1, 
           total: orders.length 
         });
         
-        // 마지막 주문이 아닌 경우 딜레이
-        if (i < orders.length - 1) {
+        // 마지막 주문이 아닌 경우 딜레이 (중단 플래그 다시 확인)
+        if (i < uncachedOrders.length - 1 && !abortShipmentLoading) {
           await delay(delayMs);
         }
       }
+      
+      // 원래 순서대로 정렬
+      ordersWithShipments.sort((a, b) => {
+        const indexA = orders.findIndex(order => order.order_id === a.order_id);
+        const indexB = orders.findIndex(order => order.order_id === b.order_id);
+        return indexA - indexB;
+      });
       
       return ordersWithShipments;
     } finally {
@@ -500,6 +605,7 @@ export default function OrderManagement() {
                 <span className="ml-2 text-sm text-blue-600">
                   <RefreshCw className="inline h-4 w-4 animate-spin mr-1" />
                   배송 정보 로딩 중... ({shipmentLoadingProgress.current}/{shipmentLoadingProgress.total})
+                  <span className="text-xs text-gray-500 ml-1">(20분 캐시 적용)</span>
                 </span>
               )}
             </h2>
@@ -724,7 +830,7 @@ export default function OrderManagement() {
                     ) : (
                       <>
                         <Download className="h-4 w-4" />
-                        더 많은 주문 불러오기
+                        더 많은 주문 불러오기 (20건씩)
                       </>
                     )}
                   </button>
