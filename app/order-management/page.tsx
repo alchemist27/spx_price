@@ -83,6 +83,13 @@ export default function OrderManagement() {
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const router = useRouter();
 
+  // 체크박스 상태 계산
+  const isAllSelected = orders.length > 0 && selectedOrders.size === orders.length;
+  const isSomeSelected = selectedOrders.size > 0 && selectedOrders.size < orders.length;
+
+  // 탭별로 체크박스 표시 여부 확인
+  const showCheckboxes = ['상품준비중', '배송준비중', '배송중'].includes(activeTab);
+
   useEffect(() => {
     // 기본 날짜 설정 (최근 30일)
     const today = new Date();
@@ -483,12 +490,6 @@ export default function OrderManagement() {
       setSelectedOrders(new Set(orders.map(order => order.order_id)));
     }
   };
-
-  const isAllSelected = orders.length > 0 && selectedOrders.size === orders.length;
-  const isSomeSelected = selectedOrders.size > 0 && selectedOrders.size < orders.length;
-
-  // 탭별로 체크박스 표시 여부 확인
-  const showCheckboxes = ['상품준비중', '배송준비중', '배송중'].includes(activeTab);
 
   // 각 탭별 다음 상태 버튼 텍스트
   const getNextStatusButtonText = () => {
