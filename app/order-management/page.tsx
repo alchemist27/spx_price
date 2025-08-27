@@ -83,6 +83,7 @@ export default function OrderManagement() {
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [deliveryStatuses, setDeliveryStatuses] = useState<Map<string, string>>(new Map());
   const [isCheckingDeliveryStatus, setIsCheckingDeliveryStatus] = useState(false);
+  const [isProcessingDelivered, setIsProcessingDelivered] = useState(false);
   const router = useRouter();
 
   // 체크박스 상태 계산
@@ -511,6 +512,93 @@ export default function OrderManagement() {
     // 실제 API 호출 구현은 추후
   };
 
+  // 배송완료 주문 처리 함수 (체크박스로 선택된 주문들 처리)
+  const processDeliveredOrders = async () => {
+    // 체크박스로 선택된 주문들 가져오기
+    const selectedOrdersList = orders.filter(order => 
+      selectedOrders.has(order.order_id)
+    );
+
+    if (selectedOrdersList.length === 0) {
+      toast.error('배송완료 처리할 주문을 선택해주세요.');
+      return;
+    }
+
+    // 선택된 주문 중 배송 정보가 없는 주문 확인
+    const ordersWithoutShipment = selectedOrdersList.filter(order => 
+      !order.shipments || order.shipments.length === 0
+    );
+
+    if (ordersWithoutShipment.length > 0) {
+      toast.error(`배송 정보가 없는 주문이 있습니다: ${ordersWithoutShipment.map(o => o.order_id).join(', ')}`);
+      return;
+    }
+
+    setIsProcessingDelivered(true);
+
+    try {
+      // 선택된 주문들의 배송 정보 준비
+      const shipmentsToUpdate = [];
+      for (const order of selectedOrdersList) {
+        if (order.shipments && order.shipments.length > 0) {
+          for (const shipment of order.shipments) {
+            shipmentsToUpdate.push({
+              order_id: order.order_id,
+              shipping_code: shipment.shipping_code,
+              status: 'shipped' // 배송완료
+            });
+          }
+        }
+      }
+
+      console.log('배송완료 처리할 주문:', shipmentsToUpdate);
+
+      // Cafe24 API 호출
+      const response = await fetch('/api/shipments/update', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          orders: shipmentsToUpdate
+        })
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        toast.success(
+          `${selectedOrdersList.length}개 주문을 배송완료 처리했습니다.`,
+          { duration: 5000 }
+        );
+
+        // 선택 초기화
+        setSelectedOrders(new Set());
+        
+        // 배송 상태 맵 업데이트 (처리된 주문들을 DELIVERED로 표시)
+        const newStatuses = new Map(deliveryStatuses);
+        selectedOrdersList.forEach(order => {
+          newStatuses.set(order.order_id, 'DELIVERED');
+        });
+        setDeliveryStatuses(newStatuses);
+
+        // 1초 후 주문 목록 새로고침
+        setTimeout(() => {
+          loadOrders();
+        }, 1000);
+      } else {
+        console.error('배송완료 처리 실패:', result);
+        toast.error(result.error || '배송완료 처리에 실패했습니다.');
+      }
+
+    } catch (error) {
+      console.error('배송완료 처리 오류:', error);
+      toast.error('배송완료 처리 중 오류가 발생했습니다.');
+    } finally {
+      setIsProcessingDelivered(false);
+    }
+  };
+
   // 배송 상태 조회 함수
   const checkDeliveryStatus = async () => {
     if (activeTab !== '배송중') return;
@@ -747,23 +835,47 @@ track(
               )}
             </h2>
             {activeTab === '배송중' && orders.length > 0 && (
-              <button
-                onClick={checkDeliveryStatus}
-                disabled={isCheckingDeliveryStatus}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 text-sm font-medium"
-              >
-                {isCheckingDeliveryStatus ? (
-                  <>
-                    <RefreshCw className="h-4 w-4 animate-spin" />
-                    조회 중...
-                  </>
-                ) : (
-                  <>
-                    <Truck className="h-4 w-4" />
-                    배송상태 조회
-                  </>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={checkDeliveryStatus}
+                  disabled={isCheckingDeliveryStatus}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 text-sm font-medium"
+                >
+                  {isCheckingDeliveryStatus ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      조회 중...
+                    </>
+                  ) : (
+                    <>
+                      <Truck className="h-4 w-4" />
+                      배송상태 조회
+                    </>
+                  )}
+                </button>
+                {selectedOrders.size > 0 && (
+                  <button
+                    onClick={processDeliveredOrders}
+                    disabled={isProcessingDelivered}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 text-sm font-medium"
+                  >
+                    {isProcessingDelivered ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                        처리 중...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="h-4 w-4" />
+                        선택 주문 배송완료 처리
+                        <span className="ml-1 px-1.5 py-0.5 bg-blue-500 rounded text-xs">
+                          {selectedOrders.size}건
+                        </span>
+                      </>
+                    )}
+                  </button>
                 )}
-              </button>
+              </div>
             )}
           </div>
           
