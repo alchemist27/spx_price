@@ -80,6 +80,7 @@ export default function OrderManagement() {
   const [shipmentLoadingProgress, setShipmentLoadingProgress] = useState({ current: 0, total: 0 });
   const [abortShipmentLoading, setAbortShipmentLoading] = useState(false);
   const [shipmentCache, setShipmentCache] = useState<Map<string, {data: ShipmentInfo[], timestamp: number}>>(new Map());
+  const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const router = useRouter();
 
   useEffect(() => {
@@ -110,6 +111,14 @@ export default function OrderManagement() {
       setIsLoadingShipments(false);
     };
   }, []);
+
+  // indeterminate 상태 처리를 위한 effect
+  useEffect(() => {
+    const checkbox = document.querySelector('thead input[type="checkbox"]') as HTMLInputElement;
+    if (checkbox) {
+      checkbox.indeterminate = isSomeSelected;
+    }
+  }, [isSomeSelected]);
 
   const checkAuthStatus = async (initialStartDate?: string, initialEndDate?: string) => {
     try {
@@ -245,6 +254,7 @@ export default function OrderManagement() {
     setCurrentOffset(0);
     setTotalOrderCount(0);
     setHasMore(false);
+    setSelectedOrders(new Set()); // 탭 변경시 선택 초기화
     
     // 날짜가 설정되어 있으면 새로운 탭의 데이터 로드
     if (startDate && endDate) {
@@ -455,6 +465,48 @@ export default function OrderManagement() {
     setExpandedOrderId(expandedOrderId === orderId ? null : orderId);
   };
 
+  // 체크박스 관련 함수들
+  const handleSelectOrder = (orderId: string) => {
+    const newSelected = new Set(selectedOrders);
+    if (newSelected.has(orderId)) {
+      newSelected.delete(orderId);
+    } else {
+      newSelected.add(orderId);
+    }
+    setSelectedOrders(newSelected);
+  };
+
+  const handleSelectAll = () => {
+    if (selectedOrders.size === orders.length) {
+      setSelectedOrders(new Set());
+    } else {
+      setSelectedOrders(new Set(orders.map(order => order.order_id)));
+    }
+  };
+
+  const isAllSelected = orders.length > 0 && selectedOrders.size === orders.length;
+  const isSomeSelected = selectedOrders.size > 0 && selectedOrders.size < orders.length;
+
+  // 탭별로 체크박스 표시 여부 확인
+  const showCheckboxes = ['상품준비중', '배송준비중', '배송중'].includes(activeTab);
+
+  // 각 탭별 다음 상태 버튼 텍스트
+  const getNextStatusButtonText = () => {
+    switch(activeTab) {
+      case '상품준비중': return '배송준비중 처리';
+      case '배송준비중': return '배송중 처리';
+      case '배송중': return '배송완료 처리';
+      default: return '';
+    }
+  };
+
+  // 상태 변경 처리 함수 (추후 구현)
+  const handleStatusChange = () => {
+    const selectedOrderIds = Array.from(selectedOrders);
+    toast.success(`선택된 ${selectedOrderIds.length}개 주문을 ${getNextStatusButtonText()} 예정입니다.`);
+    // 실제 API 호출 구현은 추후
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -633,6 +685,16 @@ export default function OrderManagement() {
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
+                      {showCheckboxes && (
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          <input
+                            type="checkbox"
+                            checked={isAllSelected}
+                            onChange={handleSelectAll}
+                            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                          />
+                        </th>
+                      )}
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         주문번호
                       </th>
@@ -660,6 +722,16 @@ export default function OrderManagement() {
                     {orders.map((order) => (
                       <React.Fragment key={order.order_id}>
                         <tr className="hover:bg-gray-50">
+                          {showCheckboxes && (
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <input
+                                type="checkbox"
+                                checked={selectedOrders.has(order.order_id)}
+                                onChange={() => handleSelectOrder(order.order_id)}
+                                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                              />
+                            </td>
+                          )}
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                             {order.order_id}
                           </td>
@@ -710,7 +782,7 @@ export default function OrderManagement() {
                         </tr>
                         {expandedOrderId === order.order_id && (
                           <tr>
-                            <td colSpan={7} className="px-6 py-4 bg-gray-50">
+                            <td colSpan={showCheckboxes ? 8 : 7} className="px-6 py-4 bg-gray-50">
                               <div className="space-y-4">
                                 {/* 배송 정보 */}
                                 <div>
@@ -813,6 +885,40 @@ export default function OrderManagement() {
                   </tbody>
                 </table>
               </div>
+              
+              {/* 상태 변경 버튼 - 체크박스가 표시되는 탭에서만 */}
+              {showCheckboxes && selectedOrders.size > 0 && (
+                <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm text-gray-600">
+                      <span className="font-medium">{selectedOrders.size}개</span> 주문 선택됨
+                    </div>
+                    <button
+                      onClick={handleStatusChange}
+                      className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 font-medium shadow-sm"
+                    >
+                      {activeTab === '상품준비중' && (
+                        <>
+                          <Package className="h-4 w-4" />
+                          배송준비중 처리
+                        </>
+                      )}
+                      {activeTab === '배송준비중' && (
+                        <>
+                          <Truck className="h-4 w-4" />
+                          배송중 처리
+                        </>
+                      )}
+                      {activeTab === '배송중' && (
+                        <>
+                          <CheckCircle className="h-4 w-4" />
+                          배송완료 처리
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
               
               {/* 더보기 버튼 */}
               {hasMore && (
