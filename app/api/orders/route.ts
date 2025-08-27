@@ -284,7 +284,7 @@ function getOrderStatusText(status: string): string {
   const statusMap: Record<string, string> = {
     'N00': '입금전',
     'N10': '상품준비중',
-    'N20': '배송대기',
+    'N20': '배송준비중',
     'N21': '배송보류',
     'N22': '배송준비중',
     'N30': '배송중',
