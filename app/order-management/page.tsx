@@ -567,16 +567,16 @@ export default function OrderManagement() {
               <button
                 onClick={() => loadOrders()}
                 disabled={isLoadingOrders}
-                className="btn-secondary flex items-center gap-2"
+                className="btn-secondary flex items-center gap-1 text-xs px-2 py-1"
               >
-                <RefreshCw className={`h-4 w-4 ${isLoadingOrders ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`h-3 w-3 ${isLoadingOrders ? 'animate-spin' : ''}`} />
                 새로고침
               </button>
               <button
                 onClick={handleLogout}
-                className="btn-secondary flex items-center gap-2"
+                className="btn-secondary flex items-center gap-1 text-xs px-2 py-1"
               >
-                <LogOut className="h-4 w-4" />
+                <LogOut className="h-3 w-3" />
                 로그아웃
               </button>
             </div>
@@ -712,9 +712,6 @@ export default function OrderManagement() {
                         결제금액
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        주문상태
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         상세
                       </th>
                     </tr>
@@ -749,20 +746,11 @@ export default function OrderManagement() {
                             <div>
                               <div className="font-medium">{order.receiver_name}</div>
                               <div className="text-xs text-gray-500">{order.receiver_phone}</div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                            {formatPrice(order.payment_amount, order.currency)}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="space-y-1">
-                              {getStatusBadge(order.order_status, order.order_status_text)}
                               {/* 배송중 탭에서 배송번호 표시 */}
                               {activeTab === '배송중' && order.shipments && order.shipments.length > 0 && (
-                                <div className="text-xs text-blue-600 space-y-1">
+                                <div className="text-xs text-blue-600 mt-1">
                                   {order.shipments.map((shipment, idx) => (
-                                    <div key={idx} className="flex flex-col">
-                                      <span className="font-mono">배송: {shipment.shipping_code}</span>
+                                    <div key={idx}>
                                       {shipment.tracking_no && (
                                         <span className="font-mono">송장: {shipment.tracking_no}</span>
                                       )}
@@ -771,6 +759,9 @@ export default function OrderManagement() {
                                 </div>
                               )}
                             </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {formatPrice(order.payment_amount, order.currency)}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm">
                             <button
@@ -783,7 +774,7 @@ export default function OrderManagement() {
                         </tr>
                         {expandedOrderId === order.order_id && (
                           <tr>
-                            <td colSpan={showCheckboxes ? 8 : 7} className="px-6 py-4 bg-gray-50">
+                            <td colSpan={showCheckboxes ? 7 : 6} className="px-6 py-4 bg-gray-50">
                               <div className="space-y-4">
                                 {/* 배송 정보 */}
                                 <div>
