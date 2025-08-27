@@ -81,6 +81,8 @@ export default function OrderManagement() {
   const [abortShipmentLoading, setAbortShipmentLoading] = useState(false);
   const [shipmentCache, setShipmentCache] = useState<Map<string, {data: ShipmentInfo[], timestamp: number}>>(new Map());
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
+  const [deliveryStatuses, setDeliveryStatuses] = useState<Map<string, string>>(new Map());
+  const [isCheckingDeliveryStatus, setIsCheckingDeliveryStatus] = useState(false);
   const router = useRouter();
 
   // 체크박스 상태 계산
@@ -262,6 +264,7 @@ export default function OrderManagement() {
     setTotalOrderCount(0);
     setHasMore(false);
     setSelectedOrders(new Set()); // 탭 변경시 선택 초기화
+    setDeliveryStatuses(new Map()); // 탭 변경시 배송상태 초기화
     
     // 날짜가 설정되어 있으면 새로운 탭의 데이터 로드
     if (startDate && endDate) {
@@ -508,6 +511,87 @@ export default function OrderManagement() {
     // 실제 API 호출 구현은 추후
   };
 
+  // 배송 상태 조회 함수
+  const checkDeliveryStatus = async () => {
+    if (activeTab !== '배송중') return;
+    
+    setIsCheckingDeliveryStatus(true);
+    const newStatuses = new Map(deliveryStatuses);
+    let checkedCount = 0;
+    let deliveredCount = 0;
+
+    try {
+      for (const order of orders) {
+        // 송장번호가 있는 경우에만 조회
+        if (order.shipments && order.shipments.length > 0) {
+          for (const shipment of order.shipments) {
+            if (shipment.tracking_no) {
+              try {
+                const response = await fetch("https://apis.tracker.delivery/graphql", {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": "TRACKQL-API-KEY AA7bdo88pxq1B6L1NNJ9C3p2:8Auszg9Xlm45Zh1CJE8SkEaos8uX99CrvCp7dV6QR3j",
+                  },
+                  body: JSON.stringify({
+                    query: `query Track(
+$carrierId: ID!,
+$trackingNumber: String!
+) {
+track(
+  carrierId: $carrierId,
+  trackingNumber: $trackingNumber
+) {
+  lastEvent {
+    time
+    status {
+      code
+    }
+  }
+}
+}`.trim(),
+                    variables: {
+                      carrierId: "kr.hanjin",
+                      trackingNumber: shipment.tracking_no
+                    },
+                  }),
+                });
+
+                const data = await response.json();
+                checkedCount++;
+                
+                if (data?.data?.track?.lastEvent?.status?.code === "DELIVERED") {
+                  newStatuses.set(order.order_id, "DELIVERED");
+                  deliveredCount++;
+                } else if (data?.data?.track?.lastEvent?.status?.code) {
+                  newStatuses.set(order.order_id, data.data.track.lastEvent.status.code);
+                }
+
+                // Rate limit 방지를 위한 딜레이
+                await new Promise(resolve => setTimeout(resolve, 300));
+              } catch (error) {
+                console.error(`송장번호 ${shipment.tracking_no} 조회 실패:`, error);
+              }
+            }
+          }
+        }
+      }
+
+      setDeliveryStatuses(newStatuses);
+      
+      if (checkedCount > 0) {
+        toast.success(`${checkedCount}개 주문 배송상태 조회 완료 (배송완료: ${deliveredCount}개)`);
+      } else {
+        toast('조회 가능한 송장번호가 없습니다.', { icon: '📋' });
+      }
+    } catch (error) {
+      console.error('배송상태 조회 오류:', error);
+      toast.error('배송상태 조회 중 오류가 발생했습니다.');
+    } finally {
+      setIsCheckingDeliveryStatus(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -662,6 +746,25 @@ export default function OrderManagement() {
                 </span>
               )}
             </h2>
+            {activeTab === '배송중' && orders.length > 0 && (
+              <button
+                onClick={checkDeliveryStatus}
+                disabled={isCheckingDeliveryStatus}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 text-sm font-medium"
+              >
+                {isCheckingDeliveryStatus ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    조회 중...
+                  </>
+                ) : (
+                  <>
+                    <Truck className="h-4 w-4" />
+                    배송상태 조회
+                  </>
+                )}
+              </button>
+            )}
           </div>
           
           {isLoadingOrders && orders.length === 0 ? (
@@ -746,13 +849,27 @@ export default function OrderManagement() {
                             <div>
                               <div className="font-medium">{order.receiver_name}</div>
                               <div className="text-xs text-gray-500">{order.receiver_phone}</div>
-                              {/* 배송중 탭에서 배송번호 표시 */}
+                              {/* 배송중 탭에서 배송번호 및 상태 표시 */}
                               {activeTab === '배송중' && order.shipments && order.shipments.length > 0 && (
-                                <div className="text-xs text-blue-600 mt-1">
+                                <div className="text-xs mt-1 space-y-1">
                                   {order.shipments.map((shipment, idx) => (
                                     <div key={idx}>
                                       {shipment.tracking_no && (
-                                        <span className="font-mono">송장: {shipment.tracking_no}</span>
+                                        <div className="flex items-center gap-2">
+                                          <span className="font-mono text-blue-600">송장: {shipment.tracking_no}</span>
+                                          {deliveryStatuses.get(order.order_id) === 'DELIVERED' && (
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                              <CheckCircle className="h-3 w-3" />
+                                              배송완료
+                                            </span>
+                                          )}
+                                          {deliveryStatuses.get(order.order_id) && deliveryStatuses.get(order.order_id) !== 'DELIVERED' && (
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                              <Truck className="h-3 w-3" />
+                                              배송중
+                                            </span>
+                                          )}
+                                        </div>
                                       )}
                                     </div>
                                   ))}
