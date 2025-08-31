@@ -45,3 +45,74 @@ console.log(await trackResponse.json())
     }
   }
 }
+
+
+var request = require("request");
+var payload = {
+    "shop_no": 1,
+    "requests": [
+        {
+            "shipping_code": "D-20190108-0000791-00",
+            "order_id": "20190108-0000791",
+            "status": "shipped",
+            "status_additional_info": null,
+            "tracking_no": null,
+            "shipping_company_code": null
+        },
+        {
+            "shipping_code": "D-20190108-0000801-00",
+            "order_id": "20190108-0000801",
+            "status": "shipped",
+            "status_additional_info": null,
+            "tracking_no": null,
+            "shipping_company_code": null
+        }
+    ]
+};
+var options = { method: 'PUT',
+  url: 'https://{mallid}.cafe24api.com/api/v2/admin/shipments',
+  headers: {
+    'Authorization': "Bearer {access_token}",
+    'Content-Type': "application/json",
+    'X-Cafe24-Api-Version': "{version}"
+  },
+  body: payload,
+  json: true
+};
+request(options, function (error, response, body) {
+  if (error) throw new Error(error);
+  
+  console.log(body);
+});
+
+{
+    "shipments": [
+        {
+            "shop_no": 1,
+            "shipping_code": "D-20190108-0000791-00",
+            "order_id": "20190108-0000791",
+            "status": "shipped",
+            "status_additional_info": "Arrived at Sorting Hub",
+            "tracking_no": null,
+            "shipping_company_code": null
+        },
+        {
+            "shop_no": 1,
+            "shipping_code": "D-20190108-0000801-00",
+            "order_id": "20190108-0000801",
+            "status": "shipped",
+            "status_additional_info": "Arrived at Sorting Hub",
+            "tracking_no": null,
+            "shipping_company_code": null
+        }
+    ]
+}
+
+status	
+주문상태
+
+status 사용하여 배송상태 수정시 tracking_no, shipping_company_code는 사용 불가
+
+standby : 배송대기
+shipping : 배송중
+shipped : 배송완료

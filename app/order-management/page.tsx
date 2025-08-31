@@ -8,9 +8,10 @@ import { getToken } from '@/lib/firebase';
 import toast from 'react-hot-toast';
 import { 
   LogOut, ArrowLeft, RefreshCw, Package, Truck, CheckCircle, 
-  Clock, AlertCircle, Calendar, Search, Download, Eye 
+  Clock, AlertCircle, Calendar, Search, Download, Eye, Upload 
 } from 'lucide-react';
 import axios from 'axios';
+import ShipmentUploadModal from '@/components/ShipmentUploadModal';
 
 interface Order {
   order_id: string;
@@ -84,6 +85,7 @@ export default function OrderManagement() {
   const [deliveryStatuses, setDeliveryStatuses] = useState<Map<string, string>>(new Map());
   const [isCheckingDeliveryStatus, setIsCheckingDeliveryStatus] = useState(false);
   const [isProcessingDelivered, setIsProcessingDelivered] = useState(false);
+  const [isShipmentModalOpen, setIsShipmentModalOpen] = useState(false);
   const router = useRouter();
 
   // 체크박스 상태 계산
@@ -834,6 +836,15 @@ track(
                 </span>
               )}
             </h2>
+            {activeTab === '배송준비중' && orders.length > 0 && (
+              <button
+                onClick={() => setIsShipmentModalOpen(true)}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 text-sm font-medium"
+              >
+                <Upload className="h-4 w-4" />
+                엑셀로 송장 일괄 등록
+              </button>
+            )}
             {activeTab === '배송중' && orders.length > 0 && (
               <div className="flex items-center gap-2">
                 <button
@@ -1167,6 +1178,17 @@ track(
           )}
         </div>
       </main>
+      
+      {/* 송장 업로드 모달 */}
+      <ShipmentUploadModal
+        isOpen={isShipmentModalOpen}
+        onClose={() => setIsShipmentModalOpen(false)}
+        orders={orders}
+        onUploadComplete={() => {
+          setIsShipmentModalOpen(false);
+          loadOrders();
+        }}
+      />
     </div>
   );
 }
