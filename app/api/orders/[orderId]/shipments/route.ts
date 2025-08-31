@@ -137,6 +137,119 @@ export async function GET(
   }
 }
 
+export async function POST(
+  request: NextRequest,
+  { params }: { params: { orderId: string } }
+) {
+  try {
+    const orderId = params.orderId;
+    const body = await request.json();
+    const { tracking_no, shipping_company_code = '0003', status = 'standby' } = body;
+
+    if (!tracking_no) {
+      return NextResponse.json(
+        { error: '송장번호는 필수입니다.' },
+        { status: 400 }
+      );
+    }
+
+    const accessToken = await getValidToken();
+    if (!accessToken) {
+      return NextResponse.json({ error: '인증 토큰이 없습니다.' }, { status: 401 });
+    }
+
+    // 먼저 기존 배송 정보 확인
+    const checkUrl = `${CAFE24_BASE_URL}/admin/orders/${orderId}/shipments`;
+    const checkResponse = await fetch(checkUrl, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        'X-Cafe24-Api-Version': '2025-06-01'
+      }
+    });
+
+    if (checkResponse.ok) {
+      const checkData = await checkResponse.json();
+      
+      // 이미 등록된 송장번호가 있는지 확인
+      if (checkData.shipments && checkData.shipments.length > 0) {
+        const existingShipment = checkData.shipments.find(
+          (s: any) => s.tracking_no === tracking_no
+        );
+        
+        if (existingShipment) {
+          return NextResponse.json(
+            { error: '이미 등록된 송장번호입니다.' },
+            { status: 409 }
+          );
+        }
+      }
+    }
+
+    // 송장 등록
+    const apiUrl = `${CAFE24_BASE_URL}/admin/orders/${orderId}/shipments`;
+    console.log('송장 등록 API 호출:', apiUrl);
+
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        'X-Cafe24-Api-Version': '2025-06-01'
+      },
+      body: JSON.stringify({
+        shop_no: 1,
+        request: {
+          tracking_no,
+          shipping_company_code,
+          status
+        }
+      })
+    });
+
+    let data;
+    const responseText = await response.text();
+    
+    try {
+      data = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('송장 등록 응답 파싱 실패:', responseText);
+      return NextResponse.json({ 
+        error: '송장 등록 API 응답을 파싱할 수 없습니다.',
+        details: responseText
+      }, { status: 500 });
+    }
+
+    if (!response.ok) {
+      console.error('송장 등록 실패:', data);
+      
+      // 송장번호 형식 오류 처리
+      if (response.status === 422) {
+        return NextResponse.json(
+          { error: '송장번호 형식이 올바르지 않습니다.' },
+          { status: 422 }
+        );
+      }
+      
+      return NextResponse.json(
+        { error: data.error?.message || '송장 등록 실패' },
+        { status: response.status }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      shipment: data.shipment
+    });
+  } catch (error) {
+    console.error('송장 등록 오류:', error);
+    return NextResponse.json(
+      { error: '송장 등록 중 오류가 발생했습니다.' },
+      { status: 500 }
+    );
+  }
+}
+
 // 배송업체 코드를 이름으로 변환
 function getShippingCompanyName(code: string): string {
   const companyMap: Record<string, string> = {
