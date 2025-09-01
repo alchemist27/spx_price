@@ -8,7 +8,7 @@ import { getToken } from '@/lib/firebase';
 import toast from 'react-hot-toast';
 import { 
   LogOut, ArrowLeft, RefreshCw, Package, Truck, CheckCircle, 
-  Clock, AlertCircle, Calendar, Search, Download, Eye, Upload 
+  Clock, AlertCircle, Calendar, Search, Download, Eye, Upload, Send
 } from 'lucide-react';
 import axios from 'axios';
 import ShipmentUploadModal from '@/components/ShipmentUploadModal';
@@ -86,6 +86,7 @@ export default function OrderManagement() {
   const [isCheckingDeliveryStatus, setIsCheckingDeliveryStatus] = useState(false);
   const [isProcessingDelivered, setIsProcessingDelivered] = useState(false);
   const [isShipmentModalOpen, setIsShipmentModalOpen] = useState(false);
+  const [pendingShipments, setPendingShipments] = useState<Map<string, string>>(new Map()); // 자동입력된 송장번호 임시 저장
   const router = useRouter();
 
   // 체크박스 상태 계산
@@ -601,6 +602,101 @@ export default function OrderManagement() {
     }
   };
 
+  // 개별 주문 송장 등록 함수
+  const registerSingleShipment = async (orderId: string) => {
+    const trackingNo = pendingShipments.get(orderId);
+    if (!trackingNo) {
+      toast.error('송장번호가 없습니다.');
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/orders/${orderId}/shipments`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          tracking_no: trackingNo,
+          shipping_company_code: '0003', // 한진택배
+          status: 'standby'
+        })
+      });
+
+      if (response.ok) {
+        toast.success(`송장번호 ${trackingNo}가 등록되었습니다.`);
+        
+        // pendingShipments에서 제거
+        const newPending = new Map(pendingShipments);
+        newPending.delete(orderId);
+        setPendingShipments(newPending);
+        
+        // 주문 목록 새로고침
+        loadOrders();
+      } else {
+        const error = await response.json();
+        toast.error(error.error || '송장 등록 실패');
+      }
+    } catch (error) {
+      console.error('송장 등록 오류:', error);
+      toast.error('송장 등록 중 오류가 발생했습니다.');
+    }
+  };
+
+  // 선택된 주문들 일괄 송장 등록 함수
+  const registerSelectedShipments = async () => {
+    const selectedOrdersList = Array.from(selectedOrders);
+    const shipmentsToRegister = selectedOrdersList
+      .filter(orderId => pendingShipments.has(orderId))
+      .map(orderId => ({
+        order_id: orderId,
+        tracking_no: pendingShipments.get(orderId),
+        shipping_company_code: '0003',
+        status: 'standby'
+      }));
+
+    if (shipmentsToRegister.length === 0) {
+      toast.error('등록할 송장번호가 없습니다.');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/shipments/batch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          orders: shipmentsToRegister
+        })
+      });
+
+      const result = await response.json();
+      
+      if (response.ok) {
+        toast.success(`${result.succeeded || shipmentsToRegister.length}개 송장이 등록되었습니다.`);
+        
+        // pendingShipments에서 성공한 것들 제거
+        const newPending = new Map(pendingShipments);
+        shipmentsToRegister.forEach(shipment => {
+          newPending.delete(shipment.order_id);
+        });
+        setPendingShipments(newPending);
+        
+        // 선택 초기화
+        setSelectedOrders(new Set());
+        
+        // 주문 목록 새로고침
+        loadOrders();
+      } else {
+        toast.error(result.error || '송장 등록 실패');
+      }
+    } catch (error) {
+      console.error('일괄 송장 등록 오류:', error);
+      toast.error('송장 등록 중 오류가 발생했습니다.');
+    }
+  };
+
   // 배송 상태 조회 함수
   const checkDeliveryStatus = async () => {
     if (activeTab !== '배송중') return;
@@ -837,13 +933,24 @@ track(
               )}
             </h2>
             {activeTab === '배송준비중' && orders.length > 0 && (
-              <button
-                onClick={() => setIsShipmentModalOpen(true)}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 text-sm font-medium"
-              >
-                <Upload className="h-4 w-4" />
-                엑셀로 송장 일괄 등록
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setIsShipmentModalOpen(true)}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 text-sm font-medium"
+                >
+                  <Upload className="h-4 w-4" />
+                  엑셀로 송장 일괄 등록
+                </button>
+                {selectedOrders.size > 0 && Array.from(selectedOrders).some(id => pendingShipments.has(id)) && (
+                  <button
+                    onClick={registerSelectedShipments}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 text-sm font-medium"
+                  >
+                    <Send className="h-4 w-4" />
+                    선택한 {Array.from(selectedOrders).filter(id => pendingShipments.has(id)).length}개 송장 등록
+                  </button>
+                )}
+              </div>
             )}
             {activeTab === '배송중' && orders.length > 0 && (
               <div className="flex items-center gap-2">
@@ -934,6 +1041,11 @@ track(
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         수령자
                       </th>
+                      {activeTab === '배송준비중' && (
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          송장번호
+                        </th>
+                      )}
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         결제금액
                       </th>
@@ -1000,6 +1112,47 @@ track(
                               )}
                             </div>
                           </td>
+                          {activeTab === '배송준비중' && (
+                            <td className="px-6 py-4 whitespace-nowrap text-sm">
+                              {order.shipments && order.shipments.length > 0 && order.shipments[0].tracking_no ? (
+                                // 카페24에 이미 제출된 송장
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono text-blue-600 text-xs">
+                                    {order.shipments[0].tracking_no}
+                                  </span>
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                    카페24제출완료
+                                  </span>
+                                </div>
+                              ) : pendingShipments.has(order.order_id) ? (
+                                // 자동입력되었지만 아직 제출 전
+                                <div className="flex items-center gap-1">
+                                  <div className="flex flex-col gap-1">
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-mono text-orange-600 text-xs">
+                                        {pendingShipments.get(order.order_id)}
+                                      </span>
+                                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                        자동입력
+                                      </span>
+                                    </div>
+                                    <button
+                                      onClick={() => registerSingleShipment(order.order_id)}
+                                      className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 transition-colors flex items-center gap-1"
+                                    >
+                                      <Send className="h-3 w-3" />
+                                      등록
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                // 송장 입력 전
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                                  입력전
+                                </span>
+                              )}
+                            </td>
+                          )}
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                             {formatPrice(order.payment_amount, order.currency)}
                           </td>
@@ -1014,7 +1167,7 @@ track(
                         </tr>
                         {expandedOrderId === order.order_id && (
                           <tr>
-                            <td colSpan={showCheckboxes ? 7 : 6} className="px-6 py-4 bg-gray-50">
+                            <td colSpan={showCheckboxes ? (activeTab === '배송준비중' ? 8 : 7) : (activeTab === '배송준비중' ? 7 : 6)} className="px-6 py-4 bg-gray-50">
                               <div className="space-y-4">
                                 {/* 배송 정보 */}
                                 <div>
@@ -1028,6 +1181,29 @@ track(
                                       <span className="text-gray-500">배송 메시지:</span>
                                       <p className="text-gray-900">{order.shipping_message || '-'}</p>
                                     </div>
+                                    {/* 배송준비중 탭에서 송장번호 표시 */}
+                                    {activeTab === '배송준비중' && (
+                                      <div>
+                                        <span className="text-gray-500">송장번호:</span>
+                                        {order.shipments && order.shipments.length > 0 && order.shipments[0].tracking_no ? (
+                                          <p className="text-gray-900">
+                                            <span className="font-mono text-blue-600">{order.shipments[0].tracking_no}</span>
+                                            <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                              카페24제출완료
+                                            </span>
+                                          </p>
+                                        ) : pendingShipments.has(order.order_id) ? (
+                                          <p className="text-gray-900">
+                                            <span className="font-mono text-orange-600">{pendingShipments.get(order.order_id)}</span>
+                                            <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                              자동입력
+                                            </span>
+                                          </p>
+                                        ) : (
+                                          <p className="text-gray-500">-</p>
+                                        )}
+                                      </div>
+                                    )}
                                     {order.tracking_no && (
                                       <div>
                                         <span className="text-gray-500">송장번호:</span>
@@ -1124,30 +1300,46 @@ track(
                   <div className="flex items-center justify-between">
                     <div className="text-sm text-gray-600">
                       <span className="font-medium">{selectedOrders.size}개</span> 주문 선택됨
+                      {activeTab === '배송준비중' && Array.from(selectedOrders).some(id => pendingShipments.has(id)) && (
+                        <span className="ml-2 text-orange-600">
+                          ({Array.from(selectedOrders).filter(id => pendingShipments.has(id)).length}개 송장 자동입력됨)
+                        </span>
+                      )}
                     </div>
-                    <button
-                      onClick={handleStatusChange}
-                      className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 font-medium shadow-sm"
-                    >
-                      {activeTab === '상품준비중' && (
-                        <>
-                          <Package className="h-4 w-4" />
-                          배송준비중 처리
-                        </>
+                    <div className="flex items-center gap-2">
+                      {activeTab === '배송준비중' && Array.from(selectedOrders).some(id => pendingShipments.has(id)) && (
+                        <button
+                          onClick={registerSelectedShipments}
+                          className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors flex items-center gap-2 font-medium shadow-sm"
+                        >
+                          <Send className="h-4 w-4" />
+                          선택한 송장 등록
+                        </button>
                       )}
-                      {activeTab === '배송준비중' && (
-                        <>
-                          <Truck className="h-4 w-4" />
-                          배송중 처리
-                        </>
-                      )}
-                      {activeTab === '배송중' && (
-                        <>
-                          <CheckCircle className="h-4 w-4" />
-                          배송완료 처리
-                        </>
-                      )}
-                    </button>
+                      <button
+                        onClick={handleStatusChange}
+                        className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 font-medium shadow-sm"
+                      >
+                        {activeTab === '상품준비중' && (
+                          <>
+                            <Package className="h-4 w-4" />
+                            배송준비중 처리
+                          </>
+                        )}
+                        {activeTab === '배송준비중' && (
+                          <>
+                            <Truck className="h-4 w-4" />
+                            배송중 처리
+                          </>
+                        )}
+                        {activeTab === '배송중' && (
+                          <>
+                            <CheckCircle className="h-4 w-4" />
+                            배송완료 처리
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1182,10 +1374,22 @@ track(
       {/* 송장 업로드 모달 */}
       <ShipmentUploadModal
         isOpen={isShipmentModalOpen}
-        onClose={() => setIsShipmentModalOpen(false)}
+        onClose={() => {
+          setIsShipmentModalOpen(false);
+          setPendingShipments(new Map()); // 모달 닫을 때 자동입력 상태 초기화
+        }}
         orders={orders}
+        onMatchComplete={(matches) => {
+          // 매칭된 송장번호를 임시로 저장
+          const newPending = new Map(pendingShipments);
+          matches.forEach(match => {
+            newPending.set(match.orderId, match.trackingNo);
+          });
+          setPendingShipments(newPending);
+        }}
         onUploadComplete={() => {
           setIsShipmentModalOpen(false);
+          setPendingShipments(new Map()); // 제출 완료 후 자동입력 상태 초기화
           loadOrders();
         }}
       />
