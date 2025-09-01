@@ -43,6 +43,37 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
     return str.replace(/[\s\-()]/g, '').toLowerCase();
   };
   
+  const normalizeAddress = (address: string) => {
+    if (!address) return '';
+    
+    // 주소 정규화: 시도 명칭 통일
+    let normalized = address
+      .replace(/서울특별시/g, '서울')
+      .replace(/부산광역시/g, '부산')
+      .replace(/대구광역시/g, '대구')
+      .replace(/인천광역시/g, '인천')
+      .replace(/광주광역시/g, '광주')
+      .replace(/대전광역시/g, '대전')
+      .replace(/울산광역시/g, '울산')
+      .replace(/세종특별자치시/g, '세종')
+      .replace(/경기도/g, '경기')
+      .replace(/강원도/g, '강원')
+      .replace(/충청북도/g, '충북')
+      .replace(/충청남도/g, '충남')
+      .replace(/전라북도/g, '전북')
+      .replace(/전라남도/g, '전남')
+      .replace(/경상북도/g, '경북')
+      .replace(/경상남도/g, '경남')
+      .replace(/제주특별자치도/g, '제주')
+      .replace(/광역시/g, '')
+      .replace(/특별시/g, '')
+      .replace(/특별자치/g, '')
+      .replace(/\s+/g, '') // 모든 공백 제거
+      .toLowerCase();
+      
+    return normalized;
+  };
+  
   const normalizeName = (name: string) => {
     if (!name) return '';
     // "고객*", "팀장*", "원장*" 등의 패턴 제거
@@ -174,7 +205,7 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
     
     shipmentData.forEach((shipment, index) => {
       const normalizedShipmentName = normalizeName(shipment.receiverName);
-      const normalizedShipmentAddress = normalizeString(shipment.receiverAddress);
+      const normalizedShipmentAddress = normalizeAddress(shipment.receiverAddress);
       const normalizedShipmentPhone = normalizePhone(shipment.receiverPhone);
       
       // 디버깅: 첫 번째 항목만 상세 로그
@@ -183,8 +214,17 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
           원본이름: shipment.receiverName,
           정규화된이름: normalizedShipmentName,
           전화번호: normalizedShipmentPhone,
-          주소: shipment.receiverAddress
+          원본주소: shipment.receiverAddress,
+          정규화된주소: normalizedShipmentAddress
         });
+        
+        // 주문 데이터 첫 번째 항목의 주소도 보여주기
+        if (orders.length > 0) {
+          console.log('주문 데이터 주소 예시:', {
+            원본: orders[0].receiver_address,
+            정규화: normalizeAddress(orders[0].receiver_address)
+          });
+        }
       }
       
       let matchFound = false;
@@ -220,7 +260,7 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
       } else if (nameMatchOrders.length > 1) {
         // 이름이 여러 개 매칭되면 주소로 추가 필터링
         const addressMatchOrders = nameMatchOrders.filter(order => {
-          const normalizedOrderAddress = normalizeString(order.receiver_address);
+          const normalizedOrderAddress = normalizeAddress(order.receiver_address);
           return normalizedOrderAddress.includes(normalizedShipmentAddress) || 
                  normalizedShipmentAddress.includes(normalizedOrderAddress);
         });
@@ -287,7 +327,7 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
       // 3순위: 주소 매칭 (1,2순위에서 매칭 실패 시)
       if (!matchFound && normalizedShipmentAddress) {
         const addressMatchOrders = orders.filter(order => {
-          const normalizedOrderAddress = normalizeString(order.receiver_address);
+          const normalizedOrderAddress = normalizeAddress(order.receiver_address);
           
           // 주소가 너무 짧은 경우 스킵 (예: "경기도 광주시 오포읍 문형리 " 같은 불완전한 주소)
           if (normalizedShipmentAddress.length < 10) return false;
