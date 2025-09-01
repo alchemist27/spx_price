@@ -42,6 +42,15 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
     if (!str) return '';
     return str.replace(/[\s\-()]/g, '').toLowerCase();
   };
+  
+  const normalizeName = (name: string) => {
+    if (!name) return '';
+    // "고객*", "팀장*", "원장*" 등의 패턴 제거
+    let cleaned = name.replace(/\s*(고객|팀장|원장|본부장|로스터|원두)\*?$/g, '').trim();
+    // 마지막 * 제거
+    cleaned = cleaned.replace(/\*$/, '').trim();
+    return normalizeString(cleaned);
+  };
 
   const normalizePhone = (phone: string) => {
     if (!phone) return '';
@@ -68,15 +77,28 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
         const receiverNameIndex = headers.findIndex(h => 
           h && (h.includes('받는분') || h.includes('수령자') || h.includes('수취인') || h.includes('수하인'))
         );
-        const receiverPhoneIndex = headers.findIndex(h => 
-          h && (h.includes('전화') || h.includes('연락처'))
-        );
-        const receiverZipcodeIndex = headers.findIndex(h => 
-          h && (h.includes('우편번호') || h.includes('우편'))
-        );
-        const receiverAddressIndex = headers.findIndex(h => 
-          h && (h.includes('주소'))
-        );
+        // 수하인전화 찾기 (송하인전화는 제외)
+        const receiverPhoneIndex = headers.findIndex(h => {
+          if (!h) return false;
+          if (h.includes('송하인')) return false;
+          return h.includes('수하인전화') || (h.includes('수하인') && h.includes('전화')) || 
+                 (!h.includes('송하인') && (h.includes('전화') || h.includes('연락처')));
+        });
+        // 수하인우편번호 찾기 (송하인우편번호는 제외)
+        const receiverZipcodeIndex = headers.findIndex(h => {
+          if (!h) return false;
+          if (h.includes('송하인')) return false;
+          return h.includes('수하인우편번호') || (h.includes('수하인') && h.includes('우편')) ||
+                 (!h.includes('송하인') && (h.includes('우편번호') || h.includes('우편')));
+        });
+        // 수하인주소 찾기 (송하인주소는 제외)
+        const receiverAddressIndex = headers.findIndex(h => {
+          if (!h) return false;
+          // 송하인주소는 제외
+          if (h.includes('송하인')) return false;
+          // 수하인주소 또는 수하인 + 주소 포함
+          return h.includes('수하인주소') || (h.includes('수하인') && h.includes('주소'));
+        });
         
         console.log('컬럼 인덱스:', {
           trackingNoIndex,
@@ -142,17 +164,35 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
     const matched: MatchedOrder[] = [];
     const matchingLog: any[] = [];
     
+    // 디버깅: 주문 데이터 샘플 출력
+    console.log('주문 데이터 샘플 (처음 3개):', orders.slice(0, 3).map(order => ({
+      order_id: order.order_id,
+      receiver_name: order.receiver_name,
+      receiver_phone: order.receiver_phone,
+      receiver_address: order.receiver_address
+    })));
+    
     shipmentData.forEach((shipment, index) => {
-      const normalizedShipmentName = normalizeString(shipment.receiverName);
+      const normalizedShipmentName = normalizeName(shipment.receiverName);
       const normalizedShipmentAddress = normalizeString(shipment.receiverAddress);
       const normalizedShipmentPhone = normalizePhone(shipment.receiverPhone);
+      
+      // 디버깅: 첫 번째 항목만 상세 로그
+      if (index === 0) {
+        console.log('첫 번째 매칭 시도:', {
+          원본이름: shipment.receiverName,
+          정규화된이름: normalizedShipmentName,
+          전화번호: normalizedShipmentPhone,
+          주소: shipment.receiverAddress
+        });
+      }
       
       let matchFound = false;
       let matchType: 'exact' | 'partial' | 'manual' = 'manual';
       
       // 1순위: 수하인명 매칭
       const nameMatchOrders = orders.filter(order => {
-        const normalizedOrderName = normalizeString(order.receiver_name);
+        const normalizedOrderName = normalizeName(order.receiver_name);
         return normalizedOrderName === normalizedShipmentName;
       });
       
@@ -215,6 +255,10 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
           return normalizedOrderPhone === normalizedShipmentPhone;
         });
         
+        if (index === 0 && phoneMatchOrders.length > 0) {
+          console.log('전화번호 매칭 결과:', phoneMatchOrders.length, '개');
+        }
+        
         if (phoneMatchOrders.length === 1) {
           matched.push({
             orderId: phoneMatchOrders[0].order_id,
@@ -241,10 +285,14 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
       }
       
       // 3순위: 주소 매칭 (1,2순위에서 매칭 실패 시)
-      if (!matchFound) {
+      if (!matchFound && normalizedShipmentAddress) {
         const addressMatchOrders = orders.filter(order => {
           const normalizedOrderAddress = normalizeString(order.receiver_address);
-          // 주소가 70% 이상 일치하는지 확인
+          
+          // 주소가 너무 짧은 경우 스킵 (예: "경기도 광주시 오포읍 문형리 " 같은 불완전한 주소)
+          if (normalizedShipmentAddress.length < 10) return false;
+          
+          // 주소 부분 매칭
           const addressSimilarity = normalizedOrderAddress.includes(normalizedShipmentAddress) || 
                                     normalizedShipmentAddress.includes(normalizedOrderAddress);
           const zipcodeMatch = shipment.receiverZipcode && order.receiver_address?.includes(shipment.receiverZipcode);
@@ -252,6 +300,14 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
           return (addressSimilarity && zipcodeMatch) || 
                  (normalizedOrderAddress === normalizedShipmentAddress);
         });
+        
+        if (index === 0) {
+          console.log('주소 매칭 시도:', {
+            정규화된주소: normalizedShipmentAddress,
+            길이: normalizedShipmentAddress.length,
+            매칭결과: addressMatchOrders.length
+          });
+        }
         
         if (addressMatchOrders.length === 1) {
           matched.push({
@@ -525,10 +581,15 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
                 <ul className="text-sm text-blue-700 space-y-1">
                   <li>• <strong>운송장번호</strong> (필수): "운송장", "송장"이 포함된 컬럼</li>
                   <li>• <strong>수하인명</strong> (필수): "수하인", "받는분", "수령자", "수취인"이 포함된 컬럼</li>
-                  <li>• <strong>수하인주소</strong> (필수): "주소"가 포함된 컬럼</li>
-                  <li>• <strong>수하인전화</strong> (선택): "전화", "연락처"가 포함된 컬럼</li>
-                  <li>• <strong>수하인우편번호</strong> (선택): "우편번호", "우편"이 포함된 컬럼</li>
+                  <li>• <strong>수하인주소</strong> (필수): "수하인주소" 또는 "수하인"+"주소"가 포함된 컬럼</li>
+                  <li>• <strong>수하인전화</strong> (선택): "수하인전화" 또는 "수하인"+"전화"가 포함된 컬럼</li>
+                  <li>• <strong>수하인우편번호</strong> (선택): "수하인우편번호" 또는 "수하인"+"우편"이 포함된 컬럼</li>
                 </ul>
+                <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded">
+                  <p className="text-xs text-yellow-800">
+                    ⚠️ 주의: "송하인주소"는 발송지 주소이므로 사용되지 않습니다. 반드시 "수하인주소"를 사용하세요.
+                  </p>
+                </div>
                 <p className="text-xs text-blue-600 mt-2">
                   ※ 매칭 우선순위: 1순위(수하인명) → 2순위(전화번호) → 3순위(주소)
                 </p>
