@@ -60,11 +60,13 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
         const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
         
         const headers = jsonData[0] as string[];
+        console.log('엑셀 헤더:', headers);
+        
         const trackingNoIndex = headers.findIndex(h => 
           h && (h.includes('운송장') || h.includes('송장'))
         );
         const receiverNameIndex = headers.findIndex(h => 
-          h && (h.includes('받는분') || h.includes('수령자') || h.includes('수취인'))
+          h && (h.includes('받는분') || h.includes('수령자') || h.includes('수취인') || h.includes('수하인'))
         );
         const receiverPhoneIndex = headers.findIndex(h => 
           h && (h.includes('전화') || h.includes('연락처'))
@@ -75,9 +77,24 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
         const receiverAddressIndex = headers.findIndex(h => 
           h && (h.includes('주소'))
         );
+        
+        console.log('컬럼 인덱스:', {
+          trackingNoIndex,
+          receiverNameIndex,
+          receiverPhoneIndex,
+          receiverZipcodeIndex,
+          receiverAddressIndex
+        });
 
         if (trackingNoIndex === -1 || receiverNameIndex === -1 || receiverAddressIndex === -1) {
-          toast.error('필수 컬럼(운송장번호, 받는분, 주소)을 찾을 수 없습니다.');
+          let missingColumns = [];
+          if (trackingNoIndex === -1) missingColumns.push('운송장번호');
+          if (receiverNameIndex === -1) missingColumns.push('수하인명(받는분)');
+          if (receiverAddressIndex === -1) missingColumns.push('주소');
+          
+          toast.error(`필수 컬럼을 찾을 수 없습니다: ${missingColumns.join(', ')}`);
+          console.error('누락된 필수 컬럼:', missingColumns);
+          console.error('엑셀 헤더:', headers);
           return;
         }
 
@@ -504,14 +521,17 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
               </div>
 
               <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-                <h3 className="font-semibold text-blue-900 mb-2">필수 컬럼</h3>
+                <h3 className="font-semibold text-blue-900 mb-2">지원하는 컬럼명</h3>
                 <ul className="text-sm text-blue-700 space-y-1">
-                  <li>• 운송장번호</li>
-                  <li>• 받는분 (수취인 이름)</li>
-                  <li>• 받는분 전화번호</li>
-                  <li>• 받는분 우편번호</li>
-                  <li>• 받는분 주소</li>
+                  <li>• <strong>운송장번호</strong> (필수): "운송장", "송장"이 포함된 컬럼</li>
+                  <li>• <strong>수하인명</strong> (필수): "수하인", "받는분", "수령자", "수취인"이 포함된 컬럼</li>
+                  <li>• <strong>수하인주소</strong> (필수): "주소"가 포함된 컬럼</li>
+                  <li>• <strong>수하인전화</strong> (선택): "전화", "연락처"가 포함된 컬럼</li>
+                  <li>• <strong>수하인우편번호</strong> (선택): "우편번호", "우편"이 포함된 컬럼</li>
                 </ul>
+                <p className="text-xs text-blue-600 mt-2">
+                  ※ 매칭 우선순위: 1순위(수하인명) → 2순위(전화번호) → 3순위(주소)
+                </p>
               </div>
             </div>
           )}
