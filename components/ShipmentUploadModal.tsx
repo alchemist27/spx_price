@@ -28,9 +28,10 @@ interface ShipmentUploadModalProps {
   onClose: () => void;
   orders: any[];
   onUploadComplete: () => void;
+  onMatchComplete?: (matches: MatchedOrder[]) => void;
 }
 
-export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadComplete }: ShipmentUploadModalProps) {
+export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadComplete, onMatchComplete }: ShipmentUploadModalProps) {
   const [uploadedData, setUploadedData] = useState<ShipmentData[]>([]);
   const [matchedOrders, setMatchedOrders] = useState<MatchedOrder[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -122,52 +123,171 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
 
   const matchWithOrders = (shipmentData: ShipmentData[]) => {
     const matched: MatchedOrder[] = [];
+    const matchingLog: any[] = [];
     
-    shipmentData.forEach(shipment => {
+    shipmentData.forEach((shipment, index) => {
       const normalizedShipmentName = normalizeString(shipment.receiverName);
       const normalizedShipmentAddress = normalizeString(shipment.receiverAddress);
       const normalizedShipmentPhone = normalizePhone(shipment.receiverPhone);
       
-      const matchingOrders = orders.filter(order => {
+      let matchFound = false;
+      let matchType: 'exact' | 'partial' | 'manual' = 'manual';
+      
+      // 1순위: 수하인명 매칭
+      const nameMatchOrders = orders.filter(order => {
         const normalizedOrderName = normalizeString(order.receiver_name);
-        const normalizedOrderAddress = normalizeString(order.receiver_address);
-        const normalizedOrderPhone = normalizePhone(order.receiver_phone);
-        
-        const nameMatch = normalizedOrderName === normalizedShipmentName;
-        const zipcodeMatch = order.receiver_address?.includes(shipment.receiverZipcode);
-        const addressMatch = normalizedOrderAddress === normalizedShipmentAddress;
-        
-        if (nameMatch && zipcodeMatch && addressMatch) {
-          return true;
-        }
-        
-        const phoneMatch = normalizedOrderPhone === normalizedShipmentPhone;
-        const addressSimilarity = normalizedOrderAddress.includes(normalizedShipmentAddress) || 
-                                  normalizedShipmentAddress.includes(normalizedOrderAddress);
-        
-        if (zipcodeMatch && addressSimilarity) {
-          return true;
-        }
-        
-        if (phoneMatch && (nameMatch || addressSimilarity)) {
-          return true;
-        }
-        
-        return false;
+        return normalizedOrderName === normalizedShipmentName;
       });
-
-      matchingOrders.forEach(order => {
+      
+      if (nameMatchOrders.length === 1) {
+        // 이름으로 유일하게 매칭됨
         matched.push({
-          orderId: order.order_id,
-          receiverName: order.receiver_name,
-          receiverAddress: order.receiver_address,
+          orderId: nameMatchOrders[0].order_id,
+          receiverName: nameMatchOrders[0].receiver_name,
+          receiverAddress: nameMatchOrders[0].receiver_address,
           trackingNo: shipment.trackingNo,
           matchType: 'exact'
         });
-      });
+        matchFound = true;
+        matchType = 'exact';
+        
+        matchingLog.push({
+          row: index + 1,
+          trackingNo: shipment.trackingNo,
+          shipmentName: shipment.receiverName,
+          matchedOrderId: nameMatchOrders[0].order_id,
+          matchedName: nameMatchOrders[0].receiver_name,
+          matchMethod: '1순위: 수하인명 매칭',
+          success: true
+        });
+      } else if (nameMatchOrders.length > 1) {
+        // 이름이 여러 개 매칭되면 주소로 추가 필터링
+        const addressMatchOrders = nameMatchOrders.filter(order => {
+          const normalizedOrderAddress = normalizeString(order.receiver_address);
+          return normalizedOrderAddress.includes(normalizedShipmentAddress) || 
+                 normalizedShipmentAddress.includes(normalizedOrderAddress);
+        });
+        
+        if (addressMatchOrders.length === 1) {
+          matched.push({
+            orderId: addressMatchOrders[0].order_id,
+            receiverName: addressMatchOrders[0].receiver_name,
+            receiverAddress: addressMatchOrders[0].receiver_address,
+            trackingNo: shipment.trackingNo,
+            matchType: 'exact'
+          });
+          matchFound = true;
+          matchType = 'exact';
+          
+          matchingLog.push({
+            row: index + 1,
+            trackingNo: shipment.trackingNo,
+            shipmentName: shipment.receiverName,
+            matchedOrderId: addressMatchOrders[0].order_id,
+            matchedName: addressMatchOrders[0].receiver_name,
+            matchMethod: '1순위: 수하인명 + 주소 매칭',
+            success: true
+          });
+        }
+      }
+      
+      // 2순위: 전화번호 매칭 (1순위에서 매칭 실패 시)
+      if (!matchFound && normalizedShipmentPhone) {
+        const phoneMatchOrders = orders.filter(order => {
+          const normalizedOrderPhone = normalizePhone(order.receiver_phone);
+          return normalizedOrderPhone === normalizedShipmentPhone;
+        });
+        
+        if (phoneMatchOrders.length === 1) {
+          matched.push({
+            orderId: phoneMatchOrders[0].order_id,
+            receiverName: phoneMatchOrders[0].receiver_name,
+            receiverAddress: phoneMatchOrders[0].receiver_address,
+            trackingNo: shipment.trackingNo,
+            matchType: 'partial'
+          });
+          matchFound = true;
+          matchType = 'partial';
+          
+          matchingLog.push({
+            row: index + 1,
+            trackingNo: shipment.trackingNo,
+            shipmentName: shipment.receiverName,
+            shipmentPhone: shipment.receiverPhone,
+            matchedOrderId: phoneMatchOrders[0].order_id,
+            matchedName: phoneMatchOrders[0].receiver_name,
+            matchedPhone: phoneMatchOrders[0].receiver_phone,
+            matchMethod: '2순위: 전화번호 매칭',
+            success: true
+          });
+        }
+      }
+      
+      // 3순위: 주소 매칭 (1,2순위에서 매칭 실패 시)
+      if (!matchFound) {
+        const addressMatchOrders = orders.filter(order => {
+          const normalizedOrderAddress = normalizeString(order.receiver_address);
+          // 주소가 70% 이상 일치하는지 확인
+          const addressSimilarity = normalizedOrderAddress.includes(normalizedShipmentAddress) || 
+                                    normalizedShipmentAddress.includes(normalizedOrderAddress);
+          const zipcodeMatch = shipment.receiverZipcode && order.receiver_address?.includes(shipment.receiverZipcode);
+          
+          return (addressSimilarity && zipcodeMatch) || 
+                 (normalizedOrderAddress === normalizedShipmentAddress);
+        });
+        
+        if (addressMatchOrders.length === 1) {
+          matched.push({
+            orderId: addressMatchOrders[0].order_id,
+            receiverName: addressMatchOrders[0].receiver_name,
+            receiverAddress: addressMatchOrders[0].receiver_address,
+            trackingNo: shipment.trackingNo,
+            matchType: 'partial'
+          });
+          matchFound = true;
+          matchType = 'partial';
+          
+          matchingLog.push({
+            row: index + 1,
+            trackingNo: shipment.trackingNo,
+            shipmentName: shipment.receiverName,
+            shipmentAddress: shipment.receiverAddress,
+            matchedOrderId: addressMatchOrders[0].order_id,
+            matchedName: addressMatchOrders[0].receiver_name,
+            matchedAddress: addressMatchOrders[0].receiver_address,
+            matchMethod: '3순위: 주소 매칭',
+            success: true
+          });
+        }
+      }
+      
+      // 매칭 실패 로그
+      if (!matchFound) {
+        matchingLog.push({
+          row: index + 1,
+          trackingNo: shipment.trackingNo,
+          shipmentName: shipment.receiverName,
+          shipmentPhone: shipment.receiverPhone,
+          shipmentAddress: shipment.receiverAddress,
+          matchMethod: '매칭 실패',
+          success: false,
+          reason: '일치하는 주문을 찾을 수 없음'
+        });
+      }
     });
 
+    // 디버깅 로그 출력
+    console.group('📦 송장 매칭 결과');
+    console.log(`총 ${shipmentData.length}개 송장 중 ${matched.length}개 매칭 성공`);
+    console.table(matchingLog);
+    console.groupEnd();
+
     setMatchedOrders(matched);
+    
+    // 매칭 완료 시 콜백 호출
+    if (onMatchComplete) {
+      onMatchComplete(matched);
+    }
   };
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
@@ -191,6 +311,18 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
     setIsProcessing(true);
     const failed: any[] = [];
 
+    // 전송 전 최종 확인 로그
+    console.group('🚀 카페24 송장 등록 시작');
+    console.log(`총 ${matchedOrders.length}개 주문 처리 예정`);
+    console.table(matchedOrders.map((order, index) => ({
+      순번: index + 1,
+      주문번호: order.orderId,
+      수취인: order.receiverName,
+      송장번호: order.trackingNo,
+      매칭타입: order.matchType
+    })));
+    console.groupEnd();
+
     try {
       // 100개씩 나누어 처리
       const batchSize = 100;
@@ -201,8 +333,13 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
       }
 
       let totalSuccess = 0;
+      let batchIndex = 0;
       
       for (const batch of batches) {
+        batchIndex++;
+        console.group(`📤 배치 ${batchIndex}/${batches.length} 전송`);
+        console.log(`처리 건수: ${batch.length}개`);
+        
         // 대량 등록 API 사용
         const ordersToRegister = batch.map(match => ({
           order_id: match.orderId,
@@ -210,6 +347,8 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
           shipping_company_code: '0003', // 한진택배 코드
           status: 'standby'
         }));
+
+        console.table(ordersToRegister);
 
         try {
           const response = await fetch('/api/shipments/batch', {
@@ -225,10 +364,14 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
           const result = await response.json();
           
           if (response.ok) {
+            console.log(`✅ 성공: ${result.succeeded || 0}개`);
             totalSuccess += result.succeeded || 0;
             
             // 실패한 건들 수집
             if (result.failed && result.failed.length > 0) {
+              console.warn(`⚠️ 실패: ${result.failed.length}개`);
+              console.table(result.failed);
+              
               result.failed.forEach((failedOrder: any) => {
                 failed.push({
                   orderId: failedOrder.order_id,
@@ -238,6 +381,9 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
               });
             }
           } else {
+            console.error(`❌ 배치 전체 실패: ${result.error}`);
+            console.error(result);
+            
             // 전체 배치 실패 시
             batch.forEach(match => {
               failed.push({
@@ -248,6 +394,8 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
             });
           }
         } catch (error) {
+          console.error('❌ 네트워크 오류:', error);
+          
           // 네트워크 오류 시
           batch.forEach(match => {
             failed.push({
@@ -256,11 +404,22 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
               error: '네트워크 오류'
             });
           });
+        } finally {
+          console.groupEnd();
         }
       }
 
       setFailedOrders(failed);
       setCurrentStep('complete');
+      
+      // 최종 결과 로그
+      console.group('📊 카페24 송장 등록 완료');
+      console.log(`✅ 성공: ${totalSuccess}개`);
+      console.log(`❌ 실패: ${failed.length}개`);
+      if (failed.length > 0) {
+        console.table(failed);
+      }
+      console.groupEnd();
       
       if (totalSuccess > 0) {
         toast.success(`${totalSuccess}개 주문에 송장번호를 등록했습니다.`);
@@ -376,6 +535,7 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">수취인</th>
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">주소</th>
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">송장번호</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">매칭 타입</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
@@ -385,6 +545,15 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
                         <td className="px-4 py-2 text-sm text-gray-900">{match.receiverName}</td>
                         <td className="px-4 py-2 text-sm text-gray-600 text-xs">{match.receiverAddress}</td>
                         <td className="px-4 py-2 text-sm font-mono text-blue-600">{match.trackingNo}</td>
+                        <td className="px-4 py-2 text-sm">
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                            match.matchType === 'exact' 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-yellow-100 text-yellow-800'
+                          }`}>
+                            {match.matchType === 'exact' ? '정확' : '부분'}
+                          </span>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
