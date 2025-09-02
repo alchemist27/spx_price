@@ -188,7 +188,12 @@ export async function POST(
 
     // 송장 등록
     const apiUrl = `${CAFE24_BASE_URL}/admin/orders/${orderId}/shipments`;
-    console.log('송장 등록 API 호출:', apiUrl);
+    console.log('📝 송장 등록 API 호출:', apiUrl);
+    console.log('📌 요청 데이터:', {
+      tracking_no,
+      shipping_company_code,
+      status
+    });
 
     const response = await fetch(apiUrl, {
       method: 'POST',
@@ -221,7 +226,7 @@ export async function POST(
     }
 
     if (!response.ok) {
-      console.error('송장 등록 실패:', data);
+      console.error('❌ 송장 등록 실패:', data);
       
       // 송장번호 형식 오류 처리
       if (response.status === 422) {
@@ -237,9 +242,42 @@ export async function POST(
       );
     }
 
+    console.log('✅ 송장 등록 성공:', data);
+    
+    // shipping_code가 없으면 조회해서 가져오기
+    let shippingCode = data.shipment?.shipping_code;
+    
+    if (!shippingCode && data.shipment) {
+      console.log('⚠️ shipping_code가 응답에 없음, 조회 시도...');
+      // 등록 후 즉시 조회하여 shipping_code 가져오기
+      const getShipmentsUrl = `${CAFE24_BASE_URL}/admin/orders/${orderId}/shipments`;
+      const getResponse = await fetch(getShipmentsUrl, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-Cafe24-Api-Version': '2025-06-01'
+        }
+      });
+      
+      if (getResponse.ok) {
+        const getResult = await getResponse.json();
+        // 방금 등록한 송장번호와 일치하는 shipment 찾기
+        const matchedShipment = getResult.shipments?.find(
+          (s: any) => s.tracking_no === tracking_no
+        );
+        if (matchedShipment) {
+          shippingCode = matchedShipment.shipping_code;
+          console.log('✅ shipping_code 조회 성공:', shippingCode);
+        }
+      }
+    }
+
     return NextResponse.json({
       success: true,
-      shipment: data.shipment
+      shipment: {
+        ...data.shipment,
+        shipping_code: shippingCode // 확실히 shipping_code 포함
+      }
     });
   } catch (error) {
     console.error('송장 등록 오류:', error);

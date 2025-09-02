@@ -715,10 +715,12 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
   const handleConfirmUpload = async () => {
     setIsProcessing(true);
     const failed: any[] = [];
+    const succeeded: any[] = [];
+    let totalSuccess = 0;
 
     // 전송 전 최종 확인 로그
-    console.group('🚀 카페24 송장 등록 시작');
-    console.log(`총 ${matchedOrders.length}개 주문 처리 예정`);
+    console.group('🚀 카페24 송장 등록 시작 (개별 API 호출)');
+    console.log(`총 ${matchedOrders.length}개 주문 개별 처리 예정`);
     console.table(matchedOrders.map((order, index) => ({
       순번: index + 1,
       주문번호: order.orderId,
@@ -729,89 +731,135 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
     console.groupEnd();
 
     try {
-      // 100개씩 나누어 처리
-      const batchSize = 100;
-      const batches = [];
-      
-      for (let i = 0; i < matchedOrders.length; i += batchSize) {
-        batches.push(matchedOrders.slice(i, i + batchSize));
-      }
-
-      let totalSuccess = 0;
-      let batchIndex = 0;
-      
-      for (const batch of batches) {
-        batchIndex++;
-        console.group(`📤 배치 ${batchIndex}/${batches.length} 전송`);
-        console.log(`처리 건수: ${batch.length}개`);
+      // 개별 처리로 변경
+      for (let i = 0; i < matchedOrders.length; i++) {
+        const match = matchedOrders[i];
         
-        // 대량 등록 API 사용
-        const ordersToRegister = batch.map(match => ({
-          order_id: match.orderId,
-          tracking_no: match.trackingNo,
-          shipping_company_code: '0003', // 한진택배 코드
-          status: 'standby'
-        }));
-
-        console.table(ordersToRegister);
-
+        console.group(`📦 [${i + 1}/${matchedOrders.length}] 주문 ${match.orderId} 개별 처리`);
+        console.log('🔹 송장번호:', match.trackingNo);
+        console.log('🔹 수취인:', match.receiverName);
+        console.log('🔹 주소:', match.receiverAddress);
+        console.log('🔹 매칭타입:', match.matchType);
+        
         try {
-          const response = await fetch('/api/shipments/batch', {
+          // Step 1: 개별 송장번호 등록
+          console.log('📝 [1/2] 송장번호 등록 시작...');
+          const registerResponse = await fetch(`/api/orders/${match.orderId}/shipments`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              orders: ordersToRegister
+              tracking_no: match.trackingNo,
+              shipping_company_code: '0003', // 한진택배
+              status: 'standby' // 배송준비중으로 먼저 등록
             })
           });
 
-          const result = await response.json();
+          const registerResult = await registerResponse.json();
           
-          if (response.ok) {
-            console.log(`✅ 성공: ${result.succeeded || 0}개`);
-            totalSuccess += result.succeeded || 0;
+          if (registerResponse.ok) {
+            console.log('✅ 송장번호 등록 성공');
+            console.log('📌 Response:', registerResult);
             
-            // 실패한 건들 수집
-            if (result.failed && result.failed.length > 0) {
-              console.warn(`⚠️ 실패: ${result.failed.length}개`);
-              console.table(result.failed);
+            // shipping_code 추출
+            const shippingCode = registerResult.shipment?.shipping_code;
+            
+            if (shippingCode) {
+              console.log('🔑 Shipping Code:', shippingCode);
               
-              result.failed.forEach((failedOrder: any) => {
-                failed.push({
-                  orderId: failedOrder.order_id,
-                  trackingNo: failedOrder.tracking_no,
-                  error: failedOrder.error || '등록 실패'
+              // Step 2: 배송중으로 상태 변경
+              console.log('🚚 [2/2] 배송중(shipping)으로 상태 변경 시작...');
+              const statusUpdateResponse = await fetch('/api/shipments/update', {
+                method: 'PUT',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  orders: [{
+                    order_id: match.orderId,
+                    shipping_code: shippingCode,
+                    status: 'shipping' // 배송중
+                  }]
+                })
+              });
+              
+              const statusUpdateResult = await statusUpdateResponse.json();
+              
+              if (statusUpdateResponse.ok) {
+                console.log('✅ 배송중 상태 변경 성공');
+                console.log('📌 Status Update Response:', statusUpdateResult);
+                totalSuccess++;
+                succeeded.push({
+                  orderId: match.orderId,
+                  trackingNo: match.trackingNo,
+                  receiverName: match.receiverName,
+                  shippingCode: shippingCode
                 });
+              } else {
+                console.error('❌ 배송중 상태 변경 실패');
+                console.error('Error:', statusUpdateResult);
+                failed.push({
+                  orderId: match.orderId,
+                  trackingNo: match.trackingNo,
+                  error: `상태 변경 실패: ${statusUpdateResult.error || '알 수 없는 오류'}`
+                });
+              }
+            } else {
+              console.warn('⚠️ shipping_code를 찾을 수 없음');
+              // 송장은 등록되었지만 상태 변경은 실패
+              totalSuccess++; // 송장 등록은 성공했으므로 카운트
+              succeeded.push({
+                orderId: match.orderId,
+                trackingNo: match.trackingNo,
+                receiverName: match.receiverName,
+                warning: '송장 등록은 성공했으나 배송중 상태 변경 실패'
               });
             }
           } else {
-            console.error(`❌ 배치 전체 실패: ${result.error}`);
-            console.error(result);
+            console.error('❌ 송장번호 등록 실패');
+            console.error('Error:', registerResult);
             
-            // 전체 배치 실패 시
-            batch.forEach(match => {
+            // 이미 등록된 경우 특별 처리
+            if (registerResponse.status === 409) {
+              console.warn('⚠️ 이미 등록된 송장번호');
               failed.push({
                 orderId: match.orderId,
                 trackingNo: match.trackingNo,
-                error: result.error || '등록 실패'
+                error: '이미 등록된 송장번호'
               });
-            });
+            } else {
+              failed.push({
+                orderId: match.orderId,
+                trackingNo: match.trackingNo,
+                error: registerResult.error || '등록 실패'
+              });
+            }
           }
         } catch (error) {
           console.error('❌ 네트워크 오류:', error);
-          
-          // 네트워크 오류 시
-          batch.forEach(match => {
-            failed.push({
-              orderId: match.orderId,
-              trackingNo: match.trackingNo,
-              error: '네트워크 오류'
-            });
+          failed.push({
+            orderId: match.orderId,
+            trackingNo: match.trackingNo,
+            error: '네트워크 오류'
           });
         } finally {
           console.groupEnd();
         }
+      }
+
+      // 성공한 주문 로그
+      if (succeeded.length > 0) {
+        console.group('✅ 성공한 주문 목록');
+        console.table(succeeded);
+        console.groupEnd();
+      }
+
+      // 실패한 주문 로그
+      if (failed.length > 0) {
+        console.group('❌ 실패한 주문 목록');
+        console.table(failed);
+        console.groupEnd();
       }
 
       setFailedOrders(failed);
@@ -821,13 +869,12 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
       console.group('📊 카페24 송장 등록 완료');
       console.log(`✅ 성공: ${totalSuccess}개`);
       console.log(`❌ 실패: ${failed.length}개`);
-      if (failed.length > 0) {
-        console.table(failed);
-      }
+      console.log('🔹 총 처리 시도:', matchedOrders.length);
+      console.log('🔹 성공률:', totalSuccess > 0 ? `${Math.round((totalSuccess / matchedOrders.length) * 100)}%` : '0%');
       console.groupEnd();
       
       if (totalSuccess > 0) {
-        toast.success(`${totalSuccess}개 주문에 송장번호를 등록했습니다.`);
+        toast.success(`${totalSuccess}개 주문에 송장번호를 등록하고 배송중으로 변경했습니다.`);
         onUploadComplete();
       }
       
