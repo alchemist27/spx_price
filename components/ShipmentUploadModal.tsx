@@ -825,7 +825,9 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
               message: '송장 등록 완료 (상태 변경 실패)'
             }
           }));
-          toast.warning(`주문 ${match.orderId}: 송장 등록 완료 (상태 변경 실패)`);
+          toast(`주문 ${match.orderId}: 송장 등록 완료 (상태 변경 실패)`, {
+            icon: '⚠️'
+          });
         }
       } else {
         throw new Error(registerResult.error || '송장 등록 실패');
