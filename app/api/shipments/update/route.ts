@@ -63,7 +63,8 @@ export async function PUT(request: NextRequest) {
     const body = await request.json();
     const { orders } = body; // Array of { order_id, shipping_code, status }
 
-    console.log('받은 요청 데이터:', orders);
+    console.log('🚚 배송 상태 변경 요청 받음');
+    console.log('📦 처리할 주문:', orders);
 
     if (!orders || !Array.isArray(orders) || orders.length === 0) {
       return NextResponse.json({ 
@@ -74,13 +75,13 @@ export async function PUT(request: NextRequest) {
     // 유효한 토큰 가져오기
     const accessToken = await getValidToken();
     if (!accessToken) {
-      console.error('토큰 획득 실패');
+      console.error('❌ 토큰 획득 실패');
       return NextResponse.json({ 
         error: '인증 토큰이 없습니다.' 
       }, { status: 401 });
     }
 
-    console.log('토큰 획득 성공');
+    console.log('✅ 토큰 획득 성공');
 
     // Cafe24 API 요청 payload 생성
     const payload = {
@@ -95,8 +96,12 @@ export async function PUT(request: NextRequest) {
       }))
     };
 
-    console.log('배송 상태 업데이트 요청:', JSON.stringify(payload, null, 2));
-    console.log('API URL:', `${CAFE24_BASE_URL}/admin/shipments`);
+    console.log('📋 배송 상태 업데이트 요청 상세:');
+    console.log('  - Order ID:', orders[0]?.order_id);
+    console.log('  - Shipping Code:', orders[0]?.shipping_code);
+    console.log('  - Target Status:', orders[0]?.status);
+    console.log('📤 전체 Payload:', JSON.stringify(payload, null, 2));
+    console.log('🔗 API URL:', `${CAFE24_BASE_URL}/admin/shipments`);
 
     // Cafe24 API 호출
     const response = await fetch(`${CAFE24_BASE_URL}/admin/shipments`, {
@@ -112,19 +117,23 @@ export async function PUT(request: NextRequest) {
     const data = await response.json();
 
     if (!response.ok) {
-      console.error('배송 상태 업데이트 실패:', data);
+      console.error('❌ 배송 상태 업데이트 실패');
+      console.error('  - Status Code:', response.status);
+      console.error('  - Error Response:', data);
       return NextResponse.json({ 
         error: data.error?.message || '배송 상태 업데이트에 실패했습니다.',
         details: data
       }, { status: response.status });
     }
 
-    console.log('배송 상태 업데이트 성공:', data);
+    console.log('✅ 배송 상태 업데이트 성공');
+    console.log('  - 업데이트된 배송 건수:', data.shipments?.length || 0);
+    console.log('  - Response:', data);
 
     return NextResponse.json({
       success: true,
       shipments: data.shipments,
-      message: `${data.shipments.length}개 주문의 배송 상태가 업데이트되었습니다.`
+      message: `${data.shipments?.length || 0}개 주문의 배송 상태가 업데이트되었습니다.`
     });
 
   } catch (error: any) {
