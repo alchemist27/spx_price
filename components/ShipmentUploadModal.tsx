@@ -194,6 +194,7 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
   const matchWithOrders = (shipmentData: ShipmentData[]) => {
     const matched: MatchedOrder[] = [];
     const matchingLog: any[] = [];
+    const matchedOrderIds = new Set<string>(); // 이미 매칭된 주문번호 추적
     
     // 디버깅: 주문 데이터 샘플 출력
     console.log('주문 데이터 샘플 (처음 3개):', orders.slice(0, 3).map(order => ({
@@ -202,6 +203,8 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
       receiver_phone: order.receiver_phone,
       receiver_address: order.receiver_address
     })));
+    
+    console.log('🚚 중복 제거 모드: 하나의 주문에 여러 상품이 있어도 첫 번째 송장번호만 사용');
     
     shipmentData.forEach((shipment, index) => {
       const normalizedShipmentName = normalizeName(shipment.receiverName);
@@ -236,10 +239,39 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
         return normalizedOrderName === normalizedShipmentName;
       });
       
+      // 디버깅: 이름 매칭 결과
+      if (index === 0) {
+        console.log('이름 매칭 결과:', {
+          정규화된이름: normalizedShipmentName,
+          매칭개수: nameMatchOrders.length,
+          매칭주문: nameMatchOrders.map(o => ({
+            주문번호: o.order_id,
+            이름: o.receiver_name,
+            정규화된이름: normalizeName(o.receiver_name)
+          }))
+        });
+      }
+      
       if (nameMatchOrders.length === 1) {
+        const orderId = nameMatchOrders[0].order_id;
+        
+        // 이미 매칭된 주문인지 확인
+        if (matchedOrderIds.has(orderId)) {
+          matchingLog.push({
+            row: index + 1,
+            trackingNo: shipment.trackingNo,
+            shipmentName: shipment.receiverName,
+            matchedOrderId: orderId,
+            matchMethod: '중복 주문 (이미 송장 할당됨)',
+            success: false,
+            reason: '동일 주문의 다른 상품'
+          });
+          return; // 다음 송장으로 건너뛰기
+        }
+        
         // 이름으로 유일하게 매칭됨
         matched.push({
-          orderId: nameMatchOrders[0].order_id,
+          orderId: orderId,
           receiverName: nameMatchOrders[0].receiver_name,
           receiverAddress: nameMatchOrders[0].receiver_address,
           trackingNo: shipment.trackingNo,
@@ -247,12 +279,13 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
         });
         matchFound = true;
         matchType = 'exact';
+        matchedOrderIds.add(orderId); // 매칭된 주문번호 추가
         
         matchingLog.push({
           row: index + 1,
           trackingNo: shipment.trackingNo,
           shipmentName: shipment.receiverName,
-          matchedOrderId: nameMatchOrders[0].order_id,
+          matchedOrderId: orderId,
           matchedName: nameMatchOrders[0].receiver_name,
           matchMethod: '1순위: 수하인명 매칭',
           success: true
@@ -261,13 +294,40 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
         // 이름이 여러 개 매칭되면 주소로 추가 필터링
         const addressMatchOrders = nameMatchOrders.filter(order => {
           const normalizedOrderAddress = normalizeAddress(order.receiver_address);
-          return normalizedOrderAddress.includes(normalizedShipmentAddress) || 
-                 normalizedShipmentAddress.includes(normalizedOrderAddress);
+          const isMatch = normalizedOrderAddress.includes(normalizedShipmentAddress) || 
+                         normalizedShipmentAddress.includes(normalizedOrderAddress) ||
+                         normalizedOrderAddress === normalizedShipmentAddress;
+          
+          if (index === 0) {
+            console.log('이름+주소 필터링:', {
+              주문주소: normalizedOrderAddress,
+              송장주소: normalizedShipmentAddress,
+              매칭여부: isMatch
+            });
+          }
+          
+          return isMatch;
         });
         
         if (addressMatchOrders.length === 1) {
+          const orderId = addressMatchOrders[0].order_id;
+          
+          // 이미 매칭된 주문인지 확인
+          if (matchedOrderIds.has(orderId)) {
+            matchingLog.push({
+              row: index + 1,
+              trackingNo: shipment.trackingNo,
+              shipmentName: shipment.receiverName,
+              matchedOrderId: orderId,
+              matchMethod: '중복 주문 (이미 송장 할당됨)',
+              success: false,
+              reason: '동일 주문의 다른 상품'
+            });
+            return;
+          }
+          
           matched.push({
-            orderId: addressMatchOrders[0].order_id,
+            orderId: orderId,
             receiverName: addressMatchOrders[0].receiver_name,
             receiverAddress: addressMatchOrders[0].receiver_address,
             trackingNo: shipment.trackingNo,
@@ -275,12 +335,13 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
           });
           matchFound = true;
           matchType = 'exact';
+          matchedOrderIds.add(orderId);
           
           matchingLog.push({
             row: index + 1,
             trackingNo: shipment.trackingNo,
             shipmentName: shipment.receiverName,
-            matchedOrderId: addressMatchOrders[0].order_id,
+            matchedOrderId: orderId,
             matchedName: addressMatchOrders[0].receiver_name,
             matchMethod: '1순위: 수하인명 + 주소 매칭',
             success: true
@@ -300,8 +361,24 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
         }
         
         if (phoneMatchOrders.length === 1) {
+          const orderId = phoneMatchOrders[0].order_id;
+          
+          // 이미 매칭된 주문인지 확인
+          if (matchedOrderIds.has(orderId)) {
+            matchingLog.push({
+              row: index + 1,
+              trackingNo: shipment.trackingNo,
+              shipmentName: shipment.receiverName,
+              matchedOrderId: orderId,
+              matchMethod: '중복 주문 (이미 송장 할당됨)',
+              success: false,
+              reason: '동일 주문의 다른 상품'
+            });
+            return;
+          }
+          
           matched.push({
-            orderId: phoneMatchOrders[0].order_id,
+            orderId: orderId,
             receiverName: phoneMatchOrders[0].receiver_name,
             receiverAddress: phoneMatchOrders[0].receiver_address,
             trackingNo: shipment.trackingNo,
@@ -309,13 +386,14 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
           });
           matchFound = true;
           matchType = 'partial';
+          matchedOrderIds.add(orderId);
           
           matchingLog.push({
             row: index + 1,
             trackingNo: shipment.trackingNo,
             shipmentName: shipment.receiverName,
             shipmentPhone: shipment.receiverPhone,
-            matchedOrderId: phoneMatchOrders[0].order_id,
+            matchedOrderId: orderId,
             matchedName: phoneMatchOrders[0].receiver_name,
             matchedPhone: phoneMatchOrders[0].receiver_phone,
             matchMethod: '2순위: 전화번호 매칭',
@@ -329,16 +407,23 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
         const addressMatchOrders = orders.filter(order => {
           const normalizedOrderAddress = normalizeAddress(order.receiver_address);
           
-          // 주소가 너무 짧은 경우 스킵 (예: "경기도 광주시 오포읍 문형리 " 같은 불완전한 주소)
-          if (normalizedShipmentAddress.length < 10) return false;
+          // 주소가 너무 짧은 경우 스킵 (5자 미만으로 조정)
+          if (normalizedShipmentAddress.length < 5) return false;
+          
+          // 정확한 매칭 우선
+          if (normalizedOrderAddress === normalizedShipmentAddress) {
+            return true;
+          }
           
           // 주소 부분 매칭
           const addressSimilarity = normalizedOrderAddress.includes(normalizedShipmentAddress) || 
                                     normalizedShipmentAddress.includes(normalizedOrderAddress);
+          
+          // 우편번호 매칭 (옵션)
           const zipcodeMatch = shipment.receiverZipcode && order.receiver_address?.includes(shipment.receiverZipcode);
           
-          return (addressSimilarity && zipcodeMatch) || 
-                 (normalizedOrderAddress === normalizedShipmentAddress);
+          // 주소 유사도가 있거나, 우편번호가 일치하면 매칭
+          return addressSimilarity || zipcodeMatch;
         });
         
         if (index === 0) {
@@ -350,8 +435,24 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
         }
         
         if (addressMatchOrders.length === 1) {
+          const orderId = addressMatchOrders[0].order_id;
+          
+          // 이미 매칭된 주문인지 확인
+          if (matchedOrderIds.has(orderId)) {
+            matchingLog.push({
+              row: index + 1,
+              trackingNo: shipment.trackingNo,
+              shipmentName: shipment.receiverName,
+              matchedOrderId: orderId,
+              matchMethod: '중복 주문 (이미 송장 할당됨)',
+              success: false,
+              reason: '동일 주문의 다른 상품'
+            });
+            return;
+          }
+          
           matched.push({
-            orderId: addressMatchOrders[0].order_id,
+            orderId: orderId,
             receiverName: addressMatchOrders[0].receiver_name,
             receiverAddress: addressMatchOrders[0].receiver_address,
             trackingNo: shipment.trackingNo,
@@ -359,13 +460,14 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
           });
           matchFound = true;
           matchType = 'partial';
+          matchedOrderIds.add(orderId);
           
           matchingLog.push({
             row: index + 1,
             trackingNo: shipment.trackingNo,
             shipmentName: shipment.receiverName,
             shipmentAddress: shipment.receiverAddress,
-            matchedOrderId: addressMatchOrders[0].order_id,
+            matchedOrderId: orderId,
             matchedName: addressMatchOrders[0].receiver_name,
             matchedAddress: addressMatchOrders[0].receiver_address,
             matchMethod: '3순위: 주소 매칭',
@@ -609,27 +711,18 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
                     <p className="text-lg text-gray-600 mb-2">
                       엑셀 파일을 드래그하거나 클릭하여 선택하세요
                     </p>
-                    <p className="text-sm text-gray-500">
-                      지원 형식: .xlsx, .xls, .csv
-                    </p>
                   </>
                 )}
               </div>
 
               <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-                <h3 className="font-semibold text-blue-900 mb-2">지원하는 컬럼명</h3>
+                <h3 className="font-semibold text-blue-900 mb-2">지원 컬럼명</h3>
                 <ul className="text-sm text-blue-700 space-y-1">
                   <li>• <strong>운송장번호</strong> (필수): "운송장", "송장"이 포함된 컬럼</li>
                   <li>• <strong>수하인명</strong> (필수): "수하인", "받는분", "수령자", "수취인"이 포함된 컬럼</li>
                   <li>• <strong>수하인주소</strong> (필수): "수하인주소" 또는 "수하인"+"주소"가 포함된 컬럼</li>
                   <li>• <strong>수하인전화</strong> (선택): "수하인전화" 또는 "수하인"+"전화"가 포함된 컬럼</li>
-                  <li>• <strong>수하인우편번호</strong> (선택): "수하인우편번호" 또는 "수하인"+"우편"이 포함된 컬럼</li>
                 </ul>
-                <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded">
-                  <p className="text-xs text-yellow-800">
-                    ⚠️ 주의: "송하인주소"는 발송지 주소이므로 사용되지 않습니다. 반드시 "수하인주소"를 사용하세요.
-                  </p>
-                </div>
                 <p className="text-xs text-blue-600 mt-2">
                   ※ 매칭 우선순위: 1순위(수하인명) → 2순위(전화번호) → 3순위(주소)
                 </p>
