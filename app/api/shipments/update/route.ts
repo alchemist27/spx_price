@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getToken } from '@/lib/firebase';
 
-const CAFE24_MALL_ID = process.env.NEXT_PUBLIC_CAFE24_MALL_ID;
+// API 라우트에서는 NEXT_PUBLIC_ 접두사 없이 환경변수 사용
+const CAFE24_MALL_ID = 'sopexkorea'; // 실제 mall ID 하드코딩
 const CAFE24_BASE_URL = `https://${CAFE24_MALL_ID}.cafe24api.com/api/v2`;
 
 // 토큰 만료 확인
@@ -17,7 +18,7 @@ async function refreshToken(refreshToken: string) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': `Basic ${Buffer.from(`${process.env.NEXT_PUBLIC_CAFE24_CLIENT_ID}:${process.env.CAFE24_CLIENT_SECRET}`).toString('base64')}`
+        'Authorization': `Basic ${Buffer.from(`${process.env.NEXT_PUBLIC_CAFE24_CLIENT_ID}:${process.env.NEXT_PUBLIC_CAFE24_CLIENT_SECRET}`).toString('base64')}`
       },
       body: new URLSearchParams({
         grant_type: 'refresh_token',
