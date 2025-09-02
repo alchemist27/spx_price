@@ -39,6 +39,7 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
   const [failedOrders, setFailedOrders] = useState<any[]>([]);
   const [failedMatches, setFailedMatches] = useState<any[]>([]); // 매칭 실패 항목
   const [partialMatches, setPartialMatches] = useState<MatchedOrder[]>([]); // 부분 매칭 항목
+  const [manualMatches, setManualMatches] = useState<Map<string, string>>(new Map()); // 수동 매칭: trackingNo -> orderId
 
   const normalizeString = (str: string) => {
     if (!str) return '';
@@ -72,7 +73,16 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
       .replace(/특별자치/g, '')
       .replace(/\s+/g, '') // 모든 공백 제거
       .toLowerCase();
-      
+    
+    // 특수문자 제거
+    normalized = normalized.replace(/[\-\(\)\[\]\{\}\.,:;'"]/g, '');
+    
+    // 숫자 뒤 건물명/상호명 처리
+    // 예: "귀인로172번길42" vs "귀인로172번길421층숨맑은집"
+    // 도로명주소의 마지막 숫자 이후 텍스트는 대부분 상세주소
+    normalized = normalized.replace(/(\d+번길\d+).*$/, '$1');
+    normalized = normalized.replace(/(\d+로\d+).*$/, '$1');
+    
     return normalized;
   };
   
@@ -405,7 +415,7 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
         }
       }
       
-      // 3순위: 주소 매칭 (1,2순위에서 매칭 실패 시)
+      // 3순위: 주소 매칭 (1,2순위에서 매칭 실패 시) - 이름 무관
       if (!matchFound && normalizedShipmentAddress) {
         const addressMatchOrders = orders.filter(order => {
           const normalizedOrderAddress = normalizeAddress(order.receiver_address);
@@ -418,7 +428,24 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
             return true;
           }
           
-          // 주소 부분 매칭
+          // 핵심 주소 부분만 비교 (도로명 + 번지)
+          // 예: "경기안양시동안구귀인로172번길42" vs "경기안양시동안구귀인로172번길421층숨맑은집"
+          const extractCoreAddress = (addr: string) => {
+            // 숫자 뒤의 층, 호, 동, 건물명 등 제거
+            return addr.replace(/(\d+)(층|호|동|실|호실|번지|번길).*$/g, '$1$2');
+          };
+          
+          const coreShipmentAddr = extractCoreAddress(normalizedShipmentAddress);
+          const coreOrderAddr = extractCoreAddress(normalizedOrderAddress);
+          
+          // 핵심 주소가 일치하거나 포함관계인 경우
+          if (coreOrderAddr === coreShipmentAddr || 
+              coreOrderAddr.includes(coreShipmentAddr) || 
+              coreShipmentAddr.includes(coreOrderAddr)) {
+            return true;
+          }
+          
+          // 기존 부분 매칭 로직
           const addressSimilarity = normalizedOrderAddress.includes(normalizedShipmentAddress) || 
                                     normalizedShipmentAddress.includes(normalizedOrderAddress);
           
@@ -430,11 +457,25 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
         });
         
         if (index === 0) {
+          const extractCoreAddress = (addr: string) => {
+            return addr.replace(/(\d+)(층|호|동|실|호실|번지|번길).*$/g, '$1$2');
+          };
+          
           console.log('주소 매칭 시도:', {
+            원본송장주소: shipment.receiverAddress,
             정규화된주소: normalizedShipmentAddress,
+            핵심주소: extractCoreAddress(normalizedShipmentAddress),
             길이: normalizedShipmentAddress.length,
             매칭결과: addressMatchOrders.length
           });
+          
+          if (orders.length > 0 && addressMatchOrders.length === 0) {
+            console.log('주문 주소 예시 (매칭 실패 디버깅):', {
+              원본: orders[0].receiver_address,
+              정규화: normalizeAddress(orders[0].receiver_address),
+              핵심: extractCoreAddress(normalizeAddress(orders[0].receiver_address))
+            });
+          }
         }
         
         if (addressMatchOrders.length === 1) {
@@ -465,6 +506,8 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
           matchType = 'partial';
           matchedOrderIds.add(orderId);
           
+          const isNameDifferent = normalizeName(addressMatchOrders[0].receiver_name) !== normalizedShipmentName;
+          
           matchingLog.push({
             row: index + 1,
             trackingNo: shipment.trackingNo,
@@ -473,8 +516,9 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
             matchedOrderId: orderId,
             matchedName: addressMatchOrders[0].receiver_name,
             matchedAddress: addressMatchOrders[0].receiver_address,
-            matchMethod: '3순위: 주소 매칭',
-            success: true
+            matchMethod: isNameDifferent ? '3순위: 주소 매칭 (이름 불일치)' : '3순위: 주소 매칭',
+            success: true,
+            note: isNameDifferent ? `송장: ${shipment.receiverName} ≠ 주문: ${addressMatchOrders[0].receiver_name}` : undefined
           });
         }
       }
@@ -534,6 +578,49 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
     },
     maxFiles: 1
   });
+
+  // 수동으로 주문번호 입력 처리
+  const handleManualMatch = (trackingNo: string, orderId: string) => {
+    const newManualMatches = new Map(manualMatches);
+    
+    if (orderId.trim()) {
+      // 유효한 주문번호인지 확인
+      const orderExists = orders.some(order => order.order_id === orderId);
+      if (!orderExists) {
+        toast.error(`주문번호 ${orderId}를 찾을 수 없습니다.`);
+        return;
+      }
+      
+      newManualMatches.set(trackingNo, orderId);
+      
+      // 해당 실패 항목을 매칭 목록에 추가
+      const failedItem = failedMatches.find(f => f.trackingNo === trackingNo);
+      if (failedItem) {
+        const order = orders.find(o => o.order_id === orderId);
+        if (order) {
+          const newMatch: MatchedOrder = {
+            orderId: order.order_id,
+            receiverName: order.receiver_name,
+            receiverAddress: order.receiver_address,
+            trackingNo: trackingNo,
+            matchType: 'manual'
+          };
+          
+          // 매칭 목록에 추가
+          setMatchedOrders(prev => [...prev, newMatch]);
+          
+          // 실패 목록에서 제거
+          setFailedMatches(prev => prev.filter(f => f.trackingNo !== trackingNo));
+          
+          toast.success(`송장번호 ${trackingNo}를 주문 ${orderId}에 수동 매칭했습니다.`);
+        }
+      }
+    } else {
+      newManualMatches.delete(trackingNo);
+    }
+    
+    setManualMatches(newManualMatches);
+  };
 
   const handleConfirmUpload = async () => {
     setIsProcessing(true);
@@ -684,6 +771,7 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
     setFailedOrders([]);
     setFailedMatches([]);
     setPartialMatches([]);
+    setManualMatches(new Map());
     setCurrentStep('upload');
     setIsProcessing(false);
     onClose();
@@ -820,9 +908,12 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
                           <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
                             match.matchType === 'exact' 
                               ? 'bg-green-100 text-green-800' 
+                              : match.matchType === 'manual'
+                              ? 'bg-purple-100 text-purple-800'
                               : 'bg-yellow-100 text-yellow-800'
                           }`}>
-                            {match.matchType === 'exact' ? '정확 매칭' : '부분 매칭'}
+                            {match.matchType === 'exact' ? '정확 매칭' : 
+                             match.matchType === 'manual' ? '수동 매칭' : '부분 매칭'}
                           </span>
                         </td>
                       </tr>
@@ -834,7 +925,12 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
               {/* 매칭 실패 목록 */}
               {failedMatches.length > 0 && (
                 <div className="mt-6">
-                  <h4 className="font-semibold text-gray-900 mb-3">매칭 실패 목록</h4>
+                  <h4 className="font-semibold text-gray-900 mb-3">
+                    매칭 실패 목록 
+                    <span className="text-sm font-normal text-gray-600 ml-2">
+                      (주문번호를 직접 입력하여 수동 매칭 가능)
+                    </span>
+                  </h4>
                   <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200">
                       <thead className="bg-red-50">
@@ -844,6 +940,7 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
                           <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">수취인명</th>
                           <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">주소</th>
                           <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">실패 사유</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">수동 매칭</th>
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
@@ -854,10 +951,27 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
                             <td className="px-4 py-2 text-sm text-gray-900">{fail.shipmentName}</td>
                             <td className="px-4 py-2 text-sm text-gray-600 text-xs">{fail.shipmentAddress}</td>
                             <td className="px-4 py-2 text-sm text-red-600">{fail.reason || fail.matchMethod}</td>
+                            <td className="px-4 py-2">
+                              <input
+                                type="text"
+                                placeholder="주문번호 입력"
+                                className="w-32 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                onBlur={(e) => handleManualMatch(fail.trackingNo, e.target.value)}
+                                onKeyPress={(e) => {
+                                  if (e.key === 'Enter') {
+                                    handleManualMatch(fail.trackingNo, (e.target as HTMLInputElement).value);
+                                  }
+                                }}
+                              />
+                            </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                  <div className="mt-3 text-sm text-gray-600">
+                    <p>💡 팁: 주문번호 형식은 "20250901-0000024"와 같습니다.</p>
+                    <p className="mt-1">입력 후 Enter 키를 누르거나 다른 곳을 클릭하면 매칭됩니다.</p>
                   </div>
                 </div>
               )}
