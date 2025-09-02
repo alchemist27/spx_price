@@ -37,6 +37,8 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentStep, setCurrentStep] = useState<'upload' | 'preview' | 'complete'>('upload');
   const [failedOrders, setFailedOrders] = useState<any[]>([]);
+  const [failedMatches, setFailedMatches] = useState<any[]>([]); // 매칭 실패 항목
+  const [partialMatches, setPartialMatches] = useState<MatchedOrder[]>([]); // 부분 매칭 항목
 
   const normalizeString = (str: string) => {
     if (!str) return '';
@@ -204,7 +206,8 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
       receiver_address: order.receiver_address
     })));
     
-    console.log('🚚 중복 제거 모드: 하나의 주문에 여러 상품이 있어도 첫 번째 송장번호만 사용');
+    console.log('🚚 중복 제거 모드: 동일 주문번호의 여러 상품은 첫 번째 송장번호만 사용');
+    console.log('📌 주의: 동일 고객의 서로 다른 주문은 각각 송장 할당됨');
     
     shipmentData.forEach((shipment, index) => {
       const normalizedShipmentName = normalizeName(shipment.receiverName);
@@ -262,9 +265,9 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
             trackingNo: shipment.trackingNo,
             shipmentName: shipment.receiverName,
             matchedOrderId: orderId,
-            matchMethod: '중복 주문 (이미 송장 할당됨)',
+            matchMethod: `동일 주문번호(${orderId})의 다른 상품`,
             success: false,
-            reason: '동일 주문의 다른 상품'
+            reason: '이미 송장 할당됨 - 스킵'
           });
           return; // 다음 송장으로 건너뛰기
         }
@@ -491,13 +494,23 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
       }
     });
 
+    // 매칭 결과 분류
+    const exactMatches = matched.filter(m => m.matchType === 'exact');
+    const partialMatchList = matched.filter(m => m.matchType === 'partial');
+    const failedMatchList = matchingLog.filter(log => !log.success);
+    
     // 디버깅 로그 출력
     console.group('📦 송장 매칭 결과');
-    console.log(`총 ${shipmentData.length}개 송장 중 ${matched.length}개 매칭 성공`);
+    console.log(`총 ${shipmentData.length}개 송장 처리`);
+    console.log(`✅ 정확 매칭: ${exactMatches.length}개`);
+    console.log(`⚠️ 부분 매칭: ${partialMatchList.length}개`);
+    console.log(`❌ 매칭 실패: ${failedMatchList.length}개`);
     console.table(matchingLog);
     console.groupEnd();
 
     setMatchedOrders(matched);
+    setPartialMatches(partialMatchList);
+    setFailedMatches(failedMatchList);
     
     // 매칭 완료 시 콜백 호출
     if (onMatchComplete) {
@@ -669,6 +682,8 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
     setUploadedData([]);
     setMatchedOrders([]);
     setFailedOrders([]);
+    setFailedMatches([]);
+    setPartialMatches([]);
     setCurrentStep('upload');
     setIsProcessing(false);
     onClose();
@@ -733,12 +748,54 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
           {currentStep === 'preview' && (
             <div>
               <div className="mb-4">
-                <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center justify-between mb-4">
                   <h3 className="font-semibold text-gray-900">매칭 결과</h3>
-                  <div className="text-sm text-gray-600">
-                    총 {matchedOrders.length}개 주문 매칭됨
+                  <div className="flex gap-4 text-sm">
+                    <span className="text-green-600">
+                      ✅ 정확: {matchedOrders.filter(m => m.matchType === 'exact').length}
+                    </span>
+                    <span className="text-yellow-600">
+                      ⚠️ 부분: {partialMatches.length}
+                    </span>
+                    <span className="text-red-600">
+                      ❌ 실패: {failedMatches.length}
+                    </span>
                   </div>
                 </div>
+                
+                {/* 매칭 실패 경고 */}
+                {failedMatches.length > 0 && (
+                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <div className="flex items-start">
+                      <AlertCircle className="h-5 w-5 text-red-500 mt-0.5 mr-2" />
+                      <div>
+                        <p className="text-sm font-medium text-red-800">
+                          {failedMatches.length}개 항목이 매칭되지 않았습니다
+                        </p>
+                        <p className="text-xs text-red-600 mt-1">
+                          수하인명과 주소가 정확한지 확인해주세요. 아래 실패 목록을 참고하세요.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 탭 버튼 */}
+              <div className="flex gap-2 mb-4 border-b border-gray-200">
+                <button
+                  className="px-4 py-2 border-b-2 border-blue-500 text-blue-600 font-medium"
+                >
+                  매칭 성공 ({matchedOrders.length})
+                </button>
+                <button
+                  className="px-4 py-2 border-b-2 border-transparent text-gray-600 hover:text-gray-800"
+                  onClick={() => {
+                    // 실패 목록 표시 토글 (추후 구현)
+                  }}
+                >
+                  매칭 실패 ({failedMatches.length})
+                </button>
               </div>
 
               <div className="overflow-x-auto">
@@ -749,12 +806,12 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">수취인</th>
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">주소</th>
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">송장번호</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">매칭 타입</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">매칭 방법</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {matchedOrders.map((match, index) => (
-                      <tr key={index}>
+                      <tr key={index} className={match.matchType === 'partial' ? 'bg-yellow-50' : ''}>
                         <td className="px-4 py-2 text-sm text-gray-900">{match.orderId}</td>
                         <td className="px-4 py-2 text-sm text-gray-900">{match.receiverName}</td>
                         <td className="px-4 py-2 text-sm text-gray-600 text-xs">{match.receiverAddress}</td>
@@ -765,7 +822,7 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
                               ? 'bg-green-100 text-green-800' 
                               : 'bg-yellow-100 text-yellow-800'
                           }`}>
-                            {match.matchType === 'exact' ? '정확' : '부분'}
+                            {match.matchType === 'exact' ? '정확 매칭' : '부분 매칭'}
                           </span>
                         </td>
                       </tr>
@@ -774,7 +831,38 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
                 </table>
               </div>
 
-              {matchedOrders.length === 0 && (
+              {/* 매칭 실패 목록 */}
+              {failedMatches.length > 0 && (
+                <div className="mt-6">
+                  <h4 className="font-semibold text-gray-900 mb-3">매칭 실패 목록</h4>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-red-50">
+                        <tr>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">행</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">송장번호</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">수취인명</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">주소</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">실패 사유</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {failedMatches.map((fail, index) => (
+                          <tr key={index} className="bg-red-50">
+                            <td className="px-4 py-2 text-sm text-gray-900">{fail.row}</td>
+                            <td className="px-4 py-2 text-sm font-mono text-gray-600">{fail.trackingNo}</td>
+                            <td className="px-4 py-2 text-sm text-gray-900">{fail.shipmentName}</td>
+                            <td className="px-4 py-2 text-sm text-gray-600 text-xs">{fail.shipmentAddress}</td>
+                            <td className="px-4 py-2 text-sm text-red-600">{fail.reason || fail.matchMethod}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {matchedOrders.length === 0 && failedMatches.length === 0 && (
                 <div className="text-center py-8">
                   <AlertCircle className="h-12 w-12 text-yellow-500 mx-auto mb-4" />
                   <p className="text-gray-600">매칭된 주문이 없습니다.</p>
