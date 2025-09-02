@@ -144,7 +144,7 @@ export async function POST(
   try {
     const orderId = params.orderId;
     const body = await request.json();
-    const { tracking_no, shipping_company_code = '0003', status = 'standby' } = body;
+    let { tracking_no, shipping_company_code = '0003', status = 'standby' } = body;
 
     if (!tracking_no) {
       return NextResponse.json(
@@ -152,6 +152,52 @@ export async function POST(
         { status: 400 }
       );
     }
+
+    // 송장번호 형식 정리 (공백, 하이픈, 특수문자 제거)
+    tracking_no = tracking_no.toString().replace(/[\s\-\._]/g, '').trim();
+    
+    // 송장번호 길이 검증 (더 유연하게 - 대부분 택배사는 10-20자리)
+    if (tracking_no.length < 8 || tracking_no.length > 25) {
+      console.error('❌ 송장번호 형식 오류:', {
+        original: body.tracking_no,
+        cleaned: tracking_no,
+        length: tracking_no.length
+      });
+      return NextResponse.json(
+        { 
+          error: `송장번호 형식이 올바르지 않습니다. (길이: ${tracking_no.length}자리)`,
+          details: {
+            original: body.tracking_no,
+            cleaned: tracking_no,
+            expected: '8-25자리 숫자',
+            received_length: tracking_no.length
+          }
+        },
+        { status: 422 }
+      );
+    }
+
+    // 숫자만 포함되어 있는지 확인
+    if (!/^\d+$/.test(tracking_no)) {
+      console.error('❌ 송장번호에 숫자 외 문자 포함:', tracking_no);
+      return NextResponse.json(
+        { 
+          error: '송장번호는 숫자만 포함해야 합니다.',
+          details: {
+            tracking_no,
+            invalid_chars: tracking_no.replace(/\d/g, '')
+          }
+        },
+        { status: 422 }
+      );
+    }
+
+    console.log('📋 송장번호 검증 통과:', {
+      orderId,
+      tracking_no,
+      shipping_company_code,
+      status
+    });
 
     const accessToken = await getValidToken();
     if (!accessToken) {

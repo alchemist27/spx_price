@@ -31,6 +31,14 @@ interface ShipmentUploadModalProps {
   onMatchComplete?: (matches: MatchedOrder[]) => void;
 }
 
+interface ProcessingStatus {
+  [key: string]: {
+    status: 'pending' | 'processing' | 'success' | 'failed';
+    message?: string;
+    shippingCode?: string;
+  };
+}
+
 export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadComplete, onMatchComplete }: ShipmentUploadModalProps) {
   const [uploadedData, setUploadedData] = useState<ShipmentData[]>([]);
   const [matchedOrders, setMatchedOrders] = useState<MatchedOrder[]>([]);
@@ -40,6 +48,7 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
   const [failedMatches, setFailedMatches] = useState<any[]>([]); // 매칭 실패 항목
   const [partialMatches, setPartialMatches] = useState<MatchedOrder[]>([]); // 부분 매칭 항목
   const [manualMatches, setManualMatches] = useState<Map<string, string>>(new Map()); // 수동 매칭: trackingNo -> orderId
+  const [processingStatus, setProcessingStatus] = useState<ProcessingStatus>({}); // 개별 처리 상태
 
   const normalizeString = (str: string) => {
     if (!str) return '';
@@ -133,10 +142,20 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
     reader.onload = (e) => {
       try {
         const data = e.target?.result;
-        const workbook = XLSX.read(data, { type: 'binary' });
+        const workbook = XLSX.read(data, { 
+          type: 'binary',
+          // 송장번호를 텍스트로 읽기 위한 옵션
+          raw: false,
+          cellText: false,
+          cellDates: true
+        });
         const sheetName = workbook.SheetNames[0];
         const sheet = workbook.Sheets[sheetName];
-        const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+        const jsonData = XLSX.utils.sheet_to_json(sheet, { 
+          header: 1,
+          raw: false, // 숫자를 문자열로 변환
+          defval: ''
+        });
         
         const headers = jsonData[0] as string[];
         console.log('엑셀 헤더:', headers);
@@ -203,8 +222,22 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
           const uniqueKey = `${normalizeString(receiverName)}|${zipcode}|${normalizeString(address)}`;
           
           if (!uniqueMap.has(uniqueKey)) {
+            // 송장번호를 문자열로 변환하고 정리
+            let trackingNumber = String(row[trackingNoIndex] || '').trim();
+            // 과학적 표기법(예: 4.6E+12) 처리
+            if (trackingNumber.includes('E+') || trackingNumber.includes('e+')) {
+              trackingNumber = parseFloat(trackingNumber).toFixed(0);
+            }
+            // 소수점 제거
+            trackingNumber = trackingNumber.replace(/\.0+$/, '');
+            
+            console.log(`송장번호 처리 [행 ${i+1}]:`, {
+              원본값: row[trackingNoIndex],
+              변환값: trackingNumber
+            });
+            
             uniqueMap.set(uniqueKey, {
-              trackingNo: String(row[trackingNoIndex]),
+              trackingNo: trackingNumber,
               receiverName: receiverName,
               receiverPhone: String(row[receiverPhoneIndex] || ''),
               receiverZipcode: zipcode,
@@ -712,6 +745,106 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
     setManualMatches(newManualMatches);
   };
 
+  // 개별 주문 처리 함수
+  const handleProcessSingleOrder = async (match: MatchedOrder) => {
+    const orderKey = `${match.orderId}-${match.trackingNo}`;
+    
+    // 처리 시작
+    setProcessingStatus(prev => ({
+      ...prev,
+      [orderKey]: { status: 'processing', message: '처리 중...' }
+    }));
+
+    console.group(`🎯 개별 주문 처리: ${match.orderId}`);
+    console.log('📦 주문 정보:', match);
+
+    try {
+      // 송장번호 형식 정리
+      const cleanedTrackingNo = match.trackingNo.replace(/[\s\-]/g, '').trim();
+      
+      // Step 1: 송장번호 등록
+      console.log('📝 [1/2] 송장번호 등록...');
+      const registerResponse = await fetch(`/api/orders/${match.orderId}/shipments`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          tracking_no: cleanedTrackingNo,
+          shipping_company_code: '0003', // 한진택배
+          status: 'standby'
+        })
+      });
+
+      const registerResult = await registerResponse.json();
+      
+      if (registerResponse.ok) {
+        console.log('✅ 송장번호 등록 성공');
+        
+        const shippingCode = registerResult.shipment?.shipping_code;
+        
+        if (shippingCode) {
+          // Step 2: 배송중으로 상태 변경
+          console.log('🚚 [2/2] 배송중 상태 변경...');
+          const statusUpdateResponse = await fetch('/api/shipments/update', {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              orders: [{
+                order_id: match.orderId,
+                shipping_code: shippingCode,
+                status: 'shipping'
+              }]
+            })
+          });
+          
+          const statusUpdateResult = await statusUpdateResponse.json();
+          
+          if (statusUpdateResponse.ok) {
+            console.log('✅ 배송중 상태 변경 성공');
+            setProcessingStatus(prev => ({
+              ...prev,
+              [orderKey]: { 
+                status: 'success', 
+                message: '완료',
+                shippingCode: shippingCode
+              }
+            }));
+            toast.success(`주문 ${match.orderId} 처리 완료`);
+          } else {
+            throw new Error(`상태 변경 실패: ${statusUpdateResult.error}`);
+          }
+        } else {
+          // 송장은 등록되었지만 shipping_code가 없음
+          setProcessingStatus(prev => ({
+            ...prev,
+            [orderKey]: { 
+              status: 'success', 
+              message: '송장 등록 완료 (상태 변경 실패)'
+            }
+          }));
+          toast.warning(`주문 ${match.orderId}: 송장 등록 완료 (상태 변경 실패)`);
+        }
+      } else {
+        throw new Error(registerResult.error || '송장 등록 실패');
+      }
+    } catch (error: any) {
+      console.error('❌ 처리 실패:', error);
+      setProcessingStatus(prev => ({
+        ...prev,
+        [orderKey]: { 
+          status: 'failed', 
+          message: error.message || '처리 실패'
+        }
+      }));
+      toast.error(`주문 ${match.orderId} 처리 실패: ${error.message}`);
+    } finally {
+      console.groupEnd();
+    }
+  };
+
   const handleConfirmUpload = async () => {
     setIsProcessing(true);
     const failed: any[] = [];
@@ -742,15 +875,21 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
         console.log('🔹 매칭타입:', match.matchType);
         
         try {
+          // 송장번호 형식 정리 (공백, 하이픈 제거)
+          const cleanedTrackingNo = match.trackingNo.replace(/[\s\-]/g, '').trim();
+          
           // Step 1: 개별 송장번호 등록
           console.log('📝 [1/2] 송장번호 등록 시작...');
+          console.log('  원본 송장번호:', match.trackingNo);
+          console.log('  정리된 송장번호:', cleanedTrackingNo);
+          
           const registerResponse = await fetch(`/api/orders/${match.orderId}/shipments`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              tracking_no: match.trackingNo,
+              tracking_no: cleanedTrackingNo,
               shipping_company_code: '0003', // 한진택배
               status: 'standby' // 배송준비중으로 먼저 등록
             })
@@ -818,23 +957,31 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
             }
           } else {
             console.error('❌ 송장번호 등록 실패');
-            console.error('Error:', registerResult);
+            console.error('  Status:', registerResponse.status);
+            console.error('  Error:', registerResult);
             
-            // 이미 등록된 경우 특별 처리
+            // 상세 에러 메시지 처리
+            let errorMessage = registerResult.error || '등록 실패';
+            
             if (registerResponse.status === 409) {
               console.warn('⚠️ 이미 등록된 송장번호');
-              failed.push({
-                orderId: match.orderId,
-                trackingNo: match.trackingNo,
-                error: '이미 등록된 송장번호'
-              });
-            } else {
-              failed.push({
-                orderId: match.orderId,
-                trackingNo: match.trackingNo,
-                error: registerResult.error || '등록 실패'
-              });
+              errorMessage = '이미 등록된 송장번호';
+            } else if (registerResponse.status === 422) {
+              console.error('⚠️ 송장번호 형식 오류');
+              if (registerResult.details) {
+                console.error('  Details:', registerResult.details);
+                errorMessage = `형식 오류: ${registerResult.error}`;
+              }
             }
+            
+            failed.push({
+              orderId: match.orderId,
+              trackingNo: match.trackingNo,
+              originalTrackingNo: match.trackingNo,
+              cleanedTrackingNo: cleanedTrackingNo,
+              error: errorMessage,
+              details: registerResult.details
+            });
           }
         } catch (error) {
           console.error('❌ 네트워크 오류:', error);
@@ -891,8 +1038,14 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
 
   const downloadFailedOrders = () => {
     const csvContent = [
-      ['주문번호', '송장번호', '오류 메시지'],
-      ...failedOrders.map(item => [item.orderId, item.trackingNo, item.error])
+      ['주문번호', '원본 송장번호', '정리된 송장번호', '오류 메시지', '상세 정보'],
+      ...failedOrders.map(item => [
+        item.orderId,
+        item.originalTrackingNo || item.trackingNo,
+        item.cleanedTrackingNo || item.trackingNo,
+        item.error,
+        item.details ? JSON.stringify(item.details) : ''
+      ])
     ].map(row => row.join(',')).join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -909,6 +1062,7 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
     setFailedMatches([]);
     setPartialMatches([]);
     setManualMatches(new Map());
+    setProcessingStatus({});
     setCurrentStep('upload');
     setIsProcessing(false);
     onClose();
@@ -1032,29 +1186,74 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">주소</th>
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">송장번호</th>
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">매칭 방법</th>
+                      <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">개별 처리</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {matchedOrders.map((match, index) => (
-                      <tr key={index} className={match.matchType === 'partial' ? 'bg-yellow-50' : ''}>
-                        <td className="px-4 py-2 text-sm text-gray-900">{match.orderId}</td>
-                        <td className="px-4 py-2 text-sm text-gray-900">{match.receiverName}</td>
-                        <td className="px-4 py-2 text-sm text-gray-600 text-xs">{match.receiverAddress}</td>
-                        <td className="px-4 py-2 text-sm font-mono text-blue-600">{match.trackingNo}</td>
-                        <td className="px-4 py-2 text-sm">
-                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                            match.matchType === 'exact' 
-                              ? 'bg-green-100 text-green-800' 
-                              : match.matchType === 'manual'
+                    {matchedOrders.map((match, index) => {
+                      const orderKey = `${match.orderId}-${match.trackingNo}`;
+                      const status = processingStatus[orderKey];
+                      
+                      return (
+                        <tr key={index} className={match.matchType === 'partial' ? 'bg-yellow-50' : ''}>
+                          <td className="px-4 py-2 text-sm text-gray-900">{match.orderId}</td>
+                          <td className="px-4 py-2 text-sm text-gray-900">{match.receiverName}</td>
+                          <td className="px-4 py-2 text-sm text-gray-600 text-xs">{match.receiverAddress}</td>
+                          <td className="px-4 py-2 text-sm font-mono text-blue-600">{match.trackingNo}</td>
+                          <td className="px-4 py-2 text-sm">
+                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                              match.matchType === 'exact' 
+                                ? 'bg-green-100 text-green-800' 
+                                : match.matchType === 'manual'
                               ? 'bg-purple-100 text-purple-800'
                               : 'bg-yellow-100 text-yellow-800'
-                          }`}>
-                            {match.matchType === 'exact' ? '정확 매칭' : 
-                             match.matchType === 'manual' ? '수동 매칭' : '부분 매칭'}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
+                            }`}>
+                              {match.matchType === 'exact' ? '정확 매칭' : 
+                               match.matchType === 'manual' ? '수동 매칭' : '부분 매칭'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2 text-center">
+                            {!status ? (
+                              <button
+                                onClick={() => handleProcessSingleOrder(match)}
+                                className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
+                              >
+                                처리
+                              </button>
+                            ) : status.status === 'processing' ? (
+                              <span className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-gray-600">
+                                <svg className="animate-spin -ml-1 mr-2 h-3 w-3 text-gray-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                처리 중...
+                              </span>
+                            ) : status.status === 'success' ? (
+                              <span className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-green-700 bg-green-100 rounded-full">
+                                <CheckCircle className="h-3 w-3 mr-1" />
+                                {status.message}
+                              </span>
+                            ) : status.status === 'failed' ? (
+                              <div className="flex items-center gap-2">
+                                <span className="inline-flex items-center px-2 py-1 text-xs font-medium text-red-700 bg-red-100 rounded-full">
+                                  <AlertCircle className="h-3 w-3 mr-1" />
+                                  실패
+                                </span>
+                                <button
+                                  onClick={() => handleProcessSingleOrder(match)}
+                                  className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                                >
+                                  재시도
+                                </button>
+                              </div>
+                            ) : null}
+                            {status?.message && status.status === 'failed' && (
+                              <div className="text-xs text-red-600 mt-1">{status.message}</div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1153,23 +1352,40 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
               닫기
             </button>
             {currentStep === 'preview' && matchedOrders.length > 0 && (
-              <button
-                onClick={handleConfirmUpload}
-                disabled={isProcessing}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              >
-                {isProcessing ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    처리 중...
-                  </>
-                ) : (
-                  <>
-                    <Upload className="h-4 w-4" />
-                    송장 등록하기
-                  </>
+              <>
+                <button
+                  onClick={handleConfirmUpload}
+                  disabled={isProcessing}
+                  className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {isProcessing ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      처리 중...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-4 w-4" />
+                      전체 일괄 등록
+                    </>
+                  )}
+                </button>
+                
+                {/* 처리 상태 요약 */}
+                {Object.keys(processingStatus).length > 0 && (
+                  <div className="flex items-center gap-4 text-sm">
+                    <span className="text-green-600">
+                      ✅ 완료: {Object.values(processingStatus).filter(s => s.status === 'success').length}
+                    </span>
+                    <span className="text-red-600">
+                      ❌ 실패: {Object.values(processingStatus).filter(s => s.status === 'failed').length}
+                    </span>
+                    <span className="text-gray-600">
+                      대기: {matchedOrders.length - Object.keys(processingStatus).length}
+                    </span>
+                  </div>
                 )}
-              </button>
+              </>
             )}
           </div>
         </div>
