@@ -144,7 +144,14 @@ export async function POST(
   try {
     const orderId = params.orderId;
     const body = await request.json();
-    let { tracking_no, shipping_company_code = '0003', status = 'standby' } = body;
+    let { tracking_no, shipping_company_code = '0018', status = 'standby' } = body;
+
+    console.log('📨 송장 등록 요청 받음:', {
+      orderId,
+      original_tracking_no: tracking_no,
+      shipping_company_code,
+      status
+    });
 
     if (!tracking_no) {
       return NextResponse.json(
@@ -155,6 +162,12 @@ export async function POST(
 
     // 송장번호 형식 정리 (공백, 하이픈, 특수문자 제거)
     tracking_no = tracking_no.toString().replace(/[\s\-\._]/g, '').trim();
+    
+    console.log('🔄 송장번호 정리:', {
+      before: body.tracking_no,
+      after: tracking_no,
+      length: tracking_no.length
+    });
     
     // 송장번호 길이 검증 (더 유연하게 - 대부분 택배사는 10-20자리)
     if (tracking_no.length < 8 || tracking_no.length > 25) {
@@ -272,18 +285,38 @@ export async function POST(
     }
 
     if (!response.ok) {
-      console.error('❌ 송장 등록 실패:', data);
+      console.error('❌ 송장 등록 실패');
+      console.error('  Status Code:', response.status);
+      console.error('  Response:', data);
+      console.error('  Request Body:', {
+        tracking_no,
+        shipping_company_code,
+        status
+      });
       
       // 송장번호 형식 오류 처리
       if (response.status === 422) {
+        const errorDetail = data.error?.message || '송장번호 형식이 올바르지 않습니다.';
+        console.error('  Cafe24 Error Detail:', errorDetail);
         return NextResponse.json(
-          { error: '송장번호 형식이 올바르지 않습니다.' },
+          { 
+            error: errorDetail,
+            cafe24_error: data.error,
+            tracking_no_info: {
+              original: body.tracking_no,
+              cleaned: tracking_no,
+              length: tracking_no.length
+            }
+          },
           { status: 422 }
         );
       }
       
       return NextResponse.json(
-        { error: data.error?.message || '송장 등록 실패' },
+        { 
+          error: data.error?.message || '송장 등록 실패',
+          details: data
+        },
         { status: response.status }
       );
     }
@@ -339,22 +372,22 @@ function getShippingCompanyName(code: string): string {
   const companyMap: Record<string, string> = {
     '0001': 'CJ대한통운',
     '0002': '로젠택배',
-    '0003': '한진택배',
-    '0004': '우체국택배',
-    '0005': 'KG로지스',
-    '0006': '대신택배',
-    '0007': 'GTX로지스',
-    '0008': '롯데택배',
-    '0009': 'GSPostbox택배',
-    '0010': '일양로지스',
-    '0011': 'EMS',
-    '0012': 'DHL',
-    '0013': 'FedEx',
-    '0014': 'UPS',
-    '0015': 'TNT',
-    '0016': '경동택배',
-    '0017': 'CVSnet편의점택배',
-    '0018': 'CJGLS',
+    '0003': '우체국택배',
+    '0004': 'KG로지스',
+    '0005': '대신택배',
+    '0006': 'GTX로지스',
+    '0007': '롯데택배',
+    '0008': 'GSPostbox택배',
+    '0009': '일양로지스',
+    '0010': 'EMS',
+    '0011': 'DHL',
+    '0012': 'FedEx',
+    '0013': 'UPS',
+    '0014': 'TNT',
+    '0015': '경동택배',
+    '0016': 'CVSnet편의점택배',
+    '0017': 'CJGLS',
+    '0018': '한진택배',  // 한진택배 코드 수정
     '0019': '한의사랑택배',
     '0020': '천일택배',
     '0021': '건영택배',
