@@ -969,3 +969,61 @@ request(options, function (error, response, body) {
 우선. 현재 동작하고 있는 가격 조정 기능과 구조를 손상하지 않도록 주의하고, 처음 로그인할때 가격 관리/주문관리 페이지로 분리하여 각기 다른 페이지로 분기시켜줘. 
 
 
+
+업로드 UI
+
+파일 드롭존에서 .xlsx 업로드 → 서버(route handler)에서 xlsx로 파싱
+
+컬럼 매핑 고정: 운송장번호, 받는분, 받는분 전화번호, 받는분 우편번호, 받는분 주소
+
+주소·수취인 기준 유니크화
+
+키: normalize(받는분) + '|' + zipcode + '|' + normalize(주소)
+
+여러 행이 같은 키면 “운송장번호 1개”만 유지(최신/첫 번째 등 규칙 선택)
+
+카페24 주문 조회
+
+기간·상태 필터(예: 결제완료·배송준비중)로 주문 목록을 가져오고, 주문별 수취인/주소 정보를 함께 확보
+
+주문 API: GET /api/v2/admin/orders (관리자(Admin) API, OAuth 필요). 자세한 엔드포인트는 Admin API 문서의 Orders에 있어요. 
+developers.cafe24.com
+
+매칭 로직
+
+1차: 받는분(정규화 일치) + 우편번호 일치 + 주소(정규화 후 완전일치)
+
+2차(대체): 우편번호 + 주소 부분일치(Levenshtein/유사도), 혹은 전화번호(숫자만)
+
+다건 매칭 시: “동일 수취인·주소면 동일 송장번호를 모든 주문에 적용” 규칙대로 모두 대상에 포함
+
+카페24에 송장 등록(자동 입력)
+
+단건 방식(쉬움): POST /api/v2/admin/orders/{order_id}/shipments 로 각 주문에 송장등록
+
+필수: tracking_no, shipping_company_code, status(standby|shipping) 
+developers.cafe24.com
+
+대량 방식(빠름): POST /api/v2/admin/shipments 로 여러 주문을 한 번에 등록(최대 100개/콜) 
+developers.cafe24.com
+
+둘 다 권한(scope) mall.write_order 필요. 
+developers.cafe24.com
++1
+
+운송사 코드는 카페24의 Carriers 리소스/가이드에서 확인 가능(또는 GET /api/v2/admin/carriers). 
+developers.cafe24.com
+
+이미 등록된 송장 중복 방지: 등록 전 GET /api/v2/admin/orders/{order_id}/shipments로 기등록 여부 확인. 
+developers.cafe24.com
+
+규칙 위반 형식의 송장번호는 422로 막히도록 최근에 강화됨(오류 처리 필수). 
+developers.cafe24.com
+
+미리보기·확정
+
+“미리보기” 테이블에서 엑셀행 ↔ 매칭된 주문들 ↔ 적용될 송장/운송사를 보여주고, 확인 버튼을 눌러 실제 API 호출
+
+실패 건은 사유와 함께 CSV 다운로드(사후 수동 처리 대비)
+
+

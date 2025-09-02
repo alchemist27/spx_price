@@ -13,7 +13,7 @@ function isTokenExpired(token: any): boolean {
 // 토큰 갱신
 async function refreshToken(refreshToken: string) {
   try {
-    const response = await fetch('https://spxkorea.cafe24api.com/api/v2/oauth/token', {
+    const response = await fetch(`${CAFE24_BASE_URL}/oauth/token`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -62,6 +62,8 @@ export async function PUT(request: NextRequest) {
     const body = await request.json();
     const { orders } = body; // Array of { order_id, shipping_code, status }
 
+    console.log('받은 요청 데이터:', orders);
+
     if (!orders || !Array.isArray(orders) || orders.length === 0) {
       return NextResponse.json({ 
         error: '처리할 주문이 없습니다.' 
@@ -71,10 +73,13 @@ export async function PUT(request: NextRequest) {
     // 유효한 토큰 가져오기
     const accessToken = await getValidToken();
     if (!accessToken) {
+      console.error('토큰 획득 실패');
       return NextResponse.json({ 
         error: '인증 토큰이 없습니다.' 
       }, { status: 401 });
     }
+
+    console.log('토큰 획득 성공');
 
     // Cafe24 API 요청 payload 생성
     const payload = {
@@ -90,6 +95,7 @@ export async function PUT(request: NextRequest) {
     };
 
     console.log('배송 상태 업데이트 요청:', JSON.stringify(payload, null, 2));
+    console.log('API URL:', `${CAFE24_BASE_URL}/admin/shipments`);
 
     // Cafe24 API 호출
     const response = await fetch(`${CAFE24_BASE_URL}/admin/shipments`, {
@@ -121,10 +127,14 @@ export async function PUT(request: NextRequest) {
     });
 
   } catch (error: any) {
-    console.error('배송 상태 업데이트 오류:', error);
+    console.error('배송 상태 업데이트 오류 상세:', error);
+    console.error('에러 타입:', error.constructor.name);
+    console.error('에러 스택:', error.stack);
+    
     return NextResponse.json({ 
       error: '배송 상태 업데이트 중 오류가 발생했습니다.',
-      details: error.message
+      details: error.message,
+      type: error.constructor.name
     }, { status: 500 });
   }
 }

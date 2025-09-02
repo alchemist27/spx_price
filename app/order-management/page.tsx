@@ -508,11 +508,97 @@ export default function OrderManagement() {
     }
   };
 
-  // 상태 변경 처리 함수 (추후 구현)
-  const handleStatusChange = () => {
-    const selectedOrderIds = Array.from(selectedOrders);
-    toast.success(`선택된 ${selectedOrderIds.length}개 주문을 ${getNextStatusButtonText()} 예정입니다.`);
-    // 실제 API 호출 구현은 추후
+  // 상태 변경 처리 함수 - 배송완료 처리
+  const handleStatusChange = async () => {
+    // 배송중 탭에서만 배송완료 처리 가능
+    if (activeTab !== '배송중') {
+      toast.error('배송중 상태의 주문만 배송완료 처리할 수 있습니다.');
+      return;
+    }
+
+    // 선택된 주문들 가져오기
+    const selectedOrdersList = orders.filter(order => 
+      selectedOrders.has(order.order_id)
+    );
+
+    if (selectedOrdersList.length === 0) {
+      toast.error('배송완료 처리할 주문을 선택해주세요.');
+      return;
+    }
+
+    // 선택된 주문 중 배송 정보가 없는 주문 확인
+    const ordersWithoutShipment = selectedOrdersList.filter(order => 
+      !order.shipments || order.shipments.length === 0
+    );
+
+    if (ordersWithoutShipment.length > 0) {
+      toast.error(`배송 정보가 없는 주문이 있습니다: ${ordersWithoutShipment.map(o => o.order_id).join(', ')}`);
+      return;
+    }
+
+    setIsProcessingDelivered(true);
+
+    try {
+      // 선택된 주문들의 배송 정보 준비
+      const shipmentsToUpdate = [];
+      for (const order of selectedOrdersList) {
+        if (order.shipments && order.shipments.length > 0) {
+          for (const shipment of order.shipments) {
+            shipmentsToUpdate.push({
+              order_id: order.order_id,
+              shipping_code: shipment.shipping_code,
+              status: 'shipped' // 배송완료
+            });
+          }
+        }
+      }
+
+      console.log('배송완료 처리할 주문:', shipmentsToUpdate);
+
+      // Cafe24 API 호출
+      const response = await fetch('/api/shipments/update', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          orders: shipmentsToUpdate
+        })
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        toast.success(
+          `${selectedOrdersList.length}개 주문을 배송완료 처리했습니다.`,
+          { duration: 5000 }
+        );
+
+        // 선택 초기화
+        setSelectedOrders(new Set());
+        
+        // 배송 상태 맵 업데이트 (처리된 주문들을 DELIVERED로 표시)
+        const newStatuses = new Map(deliveryStatuses);
+        selectedOrdersList.forEach(order => {
+          newStatuses.set(order.order_id, 'DELIVERED');
+        });
+        setDeliveryStatuses(newStatuses);
+
+        // 1초 후 주문 목록 새로고침
+        setTimeout(() => {
+          loadOrders();
+        }, 1000);
+      } else {
+        console.error('배송완료 처리 실패:', result);
+        toast.error(result.error || '배송완료 처리에 실패했습니다.');
+      }
+
+    } catch (error) {
+      console.error('배송완료 처리 오류:', error);
+      toast.error('배송완료 처리 중 오류가 발생했습니다.');
+    } finally {
+      setIsProcessingDelivered(false);
+    }
   };
 
   // 배송완료 주문 처리 함수 (체크박스로 선택된 주문들 처리)
@@ -1318,24 +1404,34 @@ track(
                       )}
                       <button
                         onClick={handleStatusChange}
-                        className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 font-medium shadow-sm"
+                        disabled={isProcessingDelivered}
+                        className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        {activeTab === '상품준비중' && (
+                        {isProcessingDelivered ? (
                           <>
-                            <Package className="h-4 w-4" />
-                            배송준비중 처리
+                            <RefreshCw className="h-4 w-4 animate-spin" />
+                            처리 중...
                           </>
-                        )}
-                        {activeTab === '배송준비중' && (
+                        ) : (
                           <>
-                            <Truck className="h-4 w-4" />
-                            배송중 처리
-                          </>
-                        )}
-                        {activeTab === '배송중' && (
-                          <>
-                            <CheckCircle className="h-4 w-4" />
-                            배송완료 처리
+                            {activeTab === '상품준비중' && (
+                              <>
+                                <Package className="h-4 w-4" />
+                                배송준비중 처리
+                              </>
+                            )}
+                            {activeTab === '배송준비중' && (
+                              <>
+                                <Truck className="h-4 w-4" />
+                                배송중 처리
+                              </>
+                            )}
+                            {activeTab === '배송중' && (
+                              <>
+                                <CheckCircle className="h-4 w-4" />
+                                배송완료 처리
+                              </>
+                            )}
                           </>
                         )}
                       </button>
