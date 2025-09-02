@@ -1018,7 +1018,6 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
                     </table>
                   </div>
                   <div className="mt-3 text-sm text-gray-600">
-                    <p>💡 팁: 주문번호 형식은 "20250901-0000024"와 같습니다.</p>
                     <p className="mt-1">입력 후 Enter 키를 누르거나 다른 곳을 클릭하면 매칭됩니다.</p>
                   </div>
                 </div>
