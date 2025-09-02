@@ -771,7 +771,7 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
         },
         body: JSON.stringify({
           tracking_no: cleanedTrackingNo,
-          shipping_company_code: '0003', // 한진택배
+          shipping_company_code: '0018', // 한진택배
           status: 'standby'
         })
       });
@@ -830,10 +830,18 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
           });
         }
       } else {
+        console.error('❌ 송장 등록 API 실패 응답:', registerResult);
+        if (registerResult.tracking_no_info) {
+          console.error('송장번호 정보:', registerResult.tracking_no_info);
+        }
+        if (registerResult.cafe24_error) {
+          console.error('Cafe24 에러:', registerResult.cafe24_error);
+        }
         throw new Error(registerResult.error || '송장 등록 실패');
       }
     } catch (error: any) {
       console.error('❌ 처리 실패:', error);
+      console.error('  Error Details:', error.message);
       setProcessingStatus(prev => ({
         ...prev,
         [orderKey]: { 
@@ -892,7 +900,7 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
             },
             body: JSON.stringify({
               tracking_no: cleanedTrackingNo,
-              shipping_company_code: '0003', // 한진택배
+              shipping_company_code: '0018', // 한진택배
               status: 'standby' // 배송준비중으로 먼저 등록
             })
           });
