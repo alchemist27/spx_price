@@ -75,15 +75,33 @@ export async function GET(request: NextRequest) {
     let apiUrl = `${CAFE24_BASE_URL}/admin/orders?limit=${limit}&offset=${offset}`;
     
     // 날짜 필터 추가 (T00:00:00 형식 추가)
-    if (startDate) {
+    if (startDate && endDate) {
+      // 날짜 유효성 검사
+      const startDateObj = new Date(startDate);
+      const endDateObj = new Date(endDate);
+      
+      if (startDateObj > endDateObj) {
+        return NextResponse.json({ 
+          error: '시작일은 종료일보다 이전이어야 합니다.' 
+        }, { status: 400 });
+      }
+      
       // YYYY-MM-DD 형식을 YYYY-MM-DDTHH:MM:SS+09:00 형식으로 변환
       const formattedStartDate = startDate.includes('T') ? startDate : `${startDate}T00:00:00+09:00`;
-      apiUrl += `&start_date=${encodeURIComponent(formattedStartDate)}`;
-    }
-    if (endDate) {
-      // 종료일은 23:59:59로 설정
       const formattedEndDate = endDate.includes('T') ? endDate : `${endDate}T23:59:59+09:00`;
+      
+      apiUrl += `&start_date=${encodeURIComponent(formattedStartDate)}`;
       apiUrl += `&end_date=${encodeURIComponent(formattedEndDate)}`;
+    } else if (startDate || endDate) {
+      // 하나만 입력된 경우
+      if (startDate) {
+        const formattedStartDate = startDate.includes('T') ? startDate : `${startDate}T00:00:00+09:00`;
+        apiUrl += `&start_date=${encodeURIComponent(formattedStartDate)}`;
+      }
+      if (endDate) {
+        const formattedEndDate = endDate.includes('T') ? endDate : `${endDate}T23:59:59+09:00`;
+        apiUrl += `&end_date=${encodeURIComponent(formattedEndDate)}`;
+      }
     }
     
     // 주문 상태 필터 추가

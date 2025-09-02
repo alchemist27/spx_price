@@ -955,12 +955,20 @@ track(
               <input
                 type="date"
                 value={startDate}
+                max={endDate || undefined}
                 onChange={(e) => {
-                  setStartDate(e.target.value);
-                  if (e.target.value && endDate) {
+                  const newStartDate = e.target.value;
+                  setStartDate(newStartDate);
+                  
+                  if (newStartDate && endDate) {
+                    // 날짜 순서 검증
+                    if (new Date(newStartDate) > new Date(endDate)) {
+                      toast.error('시작일은 종료일보다 이전이어야 합니다.');
+                      return;
+                    }
                     setOrders([]);
                     setCurrentOffset(0);
-                    loadOrdersWithDates(e.target.value, endDate, 0, false);
+                    loadOrdersWithDates(newStartDate, endDate, 0, false);
                   }
                 }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -973,12 +981,20 @@ track(
               <input
                 type="date"
                 value={endDate}
+                min={startDate || undefined}
                 onChange={(e) => {
-                  setEndDate(e.target.value);
-                  if (startDate && e.target.value) {
+                  const newEndDate = e.target.value;
+                  setEndDate(newEndDate);
+                  
+                  if (startDate && newEndDate) {
+                    // 날짜 순서 검증
+                    if (new Date(startDate) > new Date(newEndDate)) {
+                      toast.error('종료일은 시작일보다 이후여야 합니다.');
+                      return;
+                    }
                     setOrders([]);
                     setCurrentOffset(0);
-                    loadOrdersWithDates(startDate, e.target.value, 0, false);
+                    loadOrdersWithDates(startDate, newEndDate, 0, false);
                   }
                 }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
