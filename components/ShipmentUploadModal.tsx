@@ -88,20 +88,20 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
     // 예: "귀인로172번길42" vs "귀인로172번길421층숨맑은집"
     // 예: "부흥로2278-13나동다비스터" vs "부흥로2278-13"
     
-    // 도로명 주소 패턴 찾기 (로/길 + 숫자 또는 숫자-숫자)
-    // 이 패턴 이후의 모든 텍스트는 상세주소로 간주하여 제거
-    const roadPatterns = [
-      /(\d+-\d+).*$/,  // 2278-13나동다비스터 → 2278-13
-      /(\d+번길\d+).*$/,  // 172번길421층 → 172번길42
-      /(\d+로\d+-\d+).*$/,  // 부흥로2278-13나동 → 부흥로2278-13
-      /(\d+로\d+)(?!번길).*$/,  // 부흥로2278 → 부흥로2278
-    ];
+    // 도로명 주소 패턴 뒤의 상세주소 제거
+    // 주의: 기본 주소는 유지하면서 건물명/층수 등만 제거
     
-    for (const pattern of roadPatterns) {
-      if (pattern.test(normalized)) {
-        normalized = normalized.replace(pattern, '$1');
-        break;
-      }
+    // 1. 명확한 상세주소 키워드가 있는 경우 제거
+    normalized = normalized.replace(/(층|호|동|실|호실|관|빌딩|아파트|오피스텔|상가|타워|센터|프라자|빌라|하우스|맨션|파크).*$/g, '');
+    
+    // 2. 도로명 주소 뒤 한글 건물명 제거 (숫자는 유지)
+    // 번길 패턴: "172번길42" 뒤의 한글 제거
+    if (normalized.includes('번길')) {
+      normalized = normalized.replace(/(\d+번길\d+)[가-힣].*$/g, '$1');
+    }
+    // 숫자-숫자 패턴: "2278-13" 뒤의 한글 제거
+    if (normalized.includes('-')) {
+      normalized = normalized.replace(/(\d+-\d+)[가-힣].*$/g, '$1');
     }
     
     return normalized;
@@ -309,9 +309,9 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
       });
       
       // 디버깅: 이름 매칭 결과
-      if (index === 0) {
-        console.log('이름 매칭 결과:', {
-          정규화된이름: normalizedShipmentName,
+      if (index === 0 || nameMatchOrders.length === 0) {
+        console.log(`이름 매칭 결과 [${index + 1}번째]:`, {
+          송장정규화이름: normalizedShipmentName,
           매칭개수: nameMatchOrders.length,
           매칭주문: nameMatchOrders.map(o => ({
             주문번호: o.order_id,
@@ -319,6 +319,22 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
             정규화된이름: normalizeName(o.receiver_name)
           }))
         });
+        
+        // 매칭 실패 시 비슷한 이름 찾기
+        if (nameMatchOrders.length === 0 && normalizedShipmentName) {
+          const similarNames = orders.filter(o => {
+            const orderName = normalizeName(o.receiver_name);
+            return orderName.includes(normalizedShipmentName.substring(0, 2)) || 
+                   normalizedShipmentName.includes(orderName.substring(0, 2));
+          }).slice(0, 3);
+          
+          if (similarNames.length > 0) {
+            console.log('비슷한 이름 주문:', similarNames.map(o => ({
+              이름: o.receiver_name,
+              정규화: normalizeName(o.receiver_name)
+            })));
+          }
+        }
       }
       
       if (nameMatchOrders.length === 1) {
