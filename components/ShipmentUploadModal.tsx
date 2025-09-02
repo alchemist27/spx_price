@@ -49,8 +49,11 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
   const normalizeAddress = (address: string) => {
     if (!address) return '';
     
+    // 먼저 여러 공백을 하나로 통일
+    let normalized = address.replace(/\s+/g, ' ').trim();
+    
     // 주소 정규화: 시도 명칭 통일
-    let normalized = address
+    normalized = normalized
       .replace(/서울특별시/g, '서울')
       .replace(/부산광역시/g, '부산')
       .replace(/대구광역시/g, '대구')
@@ -70,12 +73,16 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
       .replace(/제주특별자치도/g, '제주')
       .replace(/광역시/g, '')
       .replace(/특별시/g, '')
-      .replace(/특별자치/g, '')
-      .replace(/\s+/g, '') // 모든 공백 제거
-      .toLowerCase();
+      .replace(/특별자치/g, '');
+    
+    // 모든 공백 제거 (정규화 최종 단계)
+    normalized = normalized.replace(/\s+/g, '');
     
     // 특수문자 제거 (하이픈은 주소의 일부이므로 유지)
     normalized = normalized.replace(/[\(\)\[\]\{\}\.,:;'"]/g, '');
+    
+    // 소문자로 변환
+    normalized = normalized.toLowerCase();
     
     // 숫자 뒤 건물명/상호명 처리
     // 예: "귀인로172번길42" vs "귀인로172번길421층숨맑은집"
@@ -84,10 +91,10 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
     // 도로명 주소 패턴 찾기 (로/길 + 숫자 또는 숫자-숫자)
     // 이 패턴 이후의 모든 텍스트는 상세주소로 간주하여 제거
     const roadPatterns = [
-      /(\d+-\d+).*$/,  // 2278-13 나동 다비스터 → 2278-13
-      /(\d+번길\s*\d+).*$/,  // 172번길42 1층 → 172번길42
-      /(\d+로\s*\d+-\d+).*$/,  // 부흥로 2278-13 나동 → 부흥로 2278-13
-      /(\d+로\s*\d+)(?!번길).*$/,  // 부흥로 2278 → 부흥로 2278
+      /(\d+-\d+).*$/,  // 2278-13나동다비스터 → 2278-13
+      /(\d+번길\d+).*$/,  // 172번길421층 → 172번길42
+      /(\d+로\d+-\d+).*$/,  // 부흥로2278-13나동 → 부흥로2278-13
+      /(\d+로\d+)(?!번길).*$/,  // 부흥로2278 → 부흥로2278
     ];
     
     for (const pattern of roadPatterns) {
@@ -102,12 +109,17 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
   
   const normalizeName = (name: string) => {
     if (!name) return '';
-    // "고객*", "팀장*", "원장*" 등의 패턴 제거 (공백 포함)
-    let cleaned = name.replace(/\s+(고객|팀장|원장|본부장|로스터|원두|님|씨|선생님|사장님|대표님)\*?$/gi, '').trim();
-    // 마지막 * 제거
-    cleaned = cleaned.replace(/\*+$/, '').trim();
+    let cleaned = name.trim();
+    
+    // "고객*", "팀장*" 등의 패턴 제거 - 더 포괄적으로
+    // 공백이 있든 없든 처리 (예: "박병준 고객*", "박병준고객*")
+    cleaned = cleaned.replace(/\s*(고객|팀장|원장|본부장|로스터|원두|님|씨|선생님|사장님|대표님)\**/gi, '');
+    
+    // 별표 제거
+    cleaned = cleaned.replace(/\*/g, '').trim();
+    
     // 공백과 특수문자 제거하고 소문자로
-    return cleaned.replace(/[\s\-\(\)\*]/g, '').toLowerCase();
+    return cleaned.replace(/[\s\-\(\)]/g, '').toLowerCase();
   };
 
   const normalizePhone = (phone: string) => {
@@ -243,7 +255,8 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
       if (index === 0 || 
           shipment.receiverName.includes('박병준') || 
           shipment.receiverAddress.includes('양주시') ||
-          shipment.receiverAddress.includes('2278-13')) {
+          shipment.receiverAddress.includes('2278-13') ||
+          shipment.receiverAddress.includes('귀인로')) {
         console.log(`📋 매칭 시도 [${index + 1}번째]:`, {
           송장: {
             원본이름: shipment.receiverName,
@@ -253,6 +266,19 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
             전화번호: normalizedShipmentPhone
           }
         });
+        
+        // 테스트: 이름 정규화 단계별 확인
+        if (shipment.receiverName.includes('박병준')) {
+          let testName = shipment.receiverName.trim();
+          console.log('이름 정규화 단계:');
+          console.log('1. 원본:', testName);
+          testName = testName.replace(/\s*(고객|팀장|원장|본부장|로스터|원두|님|씨|선생님|사장님|대표님)\**/gi, '');
+          console.log('2. 호칭 제거:', testName);
+          testName = testName.replace(/\*/g, '').trim();
+          console.log('3. 별표 제거:', testName);
+          testName = testName.replace(/[\s\-\(\)]/g, '').toLowerCase();
+          console.log('4. 최종:', testName);
+        }
         
         // 주문 데이터에서 비슷한 이름 또는 주소 찾기
         const similarOrders = orders.filter(order => 
