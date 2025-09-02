@@ -74,25 +74,40 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
       .replace(/\s+/g, '') // 모든 공백 제거
       .toLowerCase();
     
-    // 특수문자 제거
-    normalized = normalized.replace(/[\-\(\)\[\]\{\}\.,:;'"]/g, '');
+    // 특수문자 제거 (하이픈은 주소의 일부이므로 유지)
+    normalized = normalized.replace(/[\(\)\[\]\{\}\.,:;'"]/g, '');
     
     // 숫자 뒤 건물명/상호명 처리
     // 예: "귀인로172번길42" vs "귀인로172번길421층숨맑은집"
-    // 도로명주소의 마지막 숫자 이후 텍스트는 대부분 상세주소
-    normalized = normalized.replace(/(\d+번길\d+).*$/, '$1');
-    normalized = normalized.replace(/(\d+로\d+).*$/, '$1');
+    // 예: "부흥로2278-13나동다비스터" vs "부흥로2278-13"
+    
+    // 도로명 주소 패턴 찾기 (로/길 + 숫자 또는 숫자-숫자)
+    // 이 패턴 이후의 모든 텍스트는 상세주소로 간주하여 제거
+    const roadPatterns = [
+      /(\d+-\d+).*$/,  // 2278-13 나동 다비스터 → 2278-13
+      /(\d+번길\s*\d+).*$/,  // 172번길42 1층 → 172번길42
+      /(\d+로\s*\d+-\d+).*$/,  // 부흥로 2278-13 나동 → 부흥로 2278-13
+      /(\d+로\s*\d+)(?!번길).*$/,  // 부흥로 2278 → 부흥로 2278
+    ];
+    
+    for (const pattern of roadPatterns) {
+      if (pattern.test(normalized)) {
+        normalized = normalized.replace(pattern, '$1');
+        break;
+      }
+    }
     
     return normalized;
   };
   
   const normalizeName = (name: string) => {
     if (!name) return '';
-    // "고객*", "팀장*", "원장*" 등의 패턴 제거
-    let cleaned = name.replace(/\s*(고객|팀장|원장|본부장|로스터|원두)\*?$/g, '').trim();
+    // "고객*", "팀장*", "원장*" 등의 패턴 제거 (공백 포함)
+    let cleaned = name.replace(/\s+(고객|팀장|원장|본부장|로스터|원두|님|씨|선생님|사장님|대표님)\*?$/gi, '').trim();
     // 마지막 * 제거
-    cleaned = cleaned.replace(/\*$/, '').trim();
-    return normalizeString(cleaned);
+    cleaned = cleaned.replace(/\*+$/, '').trim();
+    // 공백과 특수문자 제거하고 소문자로
+    return cleaned.replace(/[\s\-\(\)\*]/g, '').toLowerCase();
   };
 
   const normalizePhone = (phone: string) => {
@@ -224,22 +239,37 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
       const normalizedShipmentAddress = normalizeAddress(shipment.receiverAddress);
       const normalizedShipmentPhone = normalizePhone(shipment.receiverPhone);
       
-      // 디버깅: 첫 번째 항목만 상세 로그
-      if (index === 0) {
-        console.log('첫 번째 매칭 시도:', {
-          원본이름: shipment.receiverName,
-          정규화된이름: normalizedShipmentName,
-          전화번호: normalizedShipmentPhone,
-          원본주소: shipment.receiverAddress,
-          정규화된주소: normalizedShipmentAddress
+      // 디버깅: 첫 번째 항목과 특정 문제 케이스 상세 로그
+      if (index === 0 || 
+          shipment.receiverName.includes('박병준') || 
+          shipment.receiverAddress.includes('양주시') ||
+          shipment.receiverAddress.includes('2278-13')) {
+        console.log(`📋 매칭 시도 [${index + 1}번째]:`, {
+          송장: {
+            원본이름: shipment.receiverName,
+            정규화이름: normalizedShipmentName,
+            원본주소: shipment.receiverAddress,
+            정규화주소: normalizedShipmentAddress,
+            전화번호: normalizedShipmentPhone
+          }
         });
         
-        // 주문 데이터 첫 번째 항목의 주소도 보여주기
-        if (orders.length > 0) {
-          console.log('주문 데이터 주소 예시:', {
-            원본: orders[0].receiver_address,
-            정규화: normalizeAddress(orders[0].receiver_address)
-          });
+        // 주문 데이터에서 비슷한 이름 또는 주소 찾기
+        const similarOrders = orders.filter(order => 
+          order.receiver_name.includes('박병준') || 
+          normalizeName(order.receiver_name) === normalizedShipmentName ||
+          order.receiver_address.includes('양주시') ||
+          order.receiver_address.includes('2278-13')
+        );
+        
+        if (similarOrders.length > 0) {
+          console.log('유사 주문 찾음:', similarOrders.map(o => ({
+            주문번호: o.order_id,
+            원본이름: o.receiver_name,
+            정규화이름: normalizeName(o.receiver_name),
+            원본주소: o.receiver_address,
+            정규화주소: normalizeAddress(o.receiver_address)
+          })));
         }
       }
       
@@ -431,8 +461,26 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
           // 핵심 주소 부분만 비교 (도로명 + 번지)
           // 예: "경기안양시동안구귀인로172번길42" vs "경기안양시동안구귀인로172번길421층숨맑은집"
           const extractCoreAddress = (addr: string) => {
-            // 숫자 뒤의 층, 호, 동, 건물명 등 제거
-            return addr.replace(/(\d+)(층|호|동|실|호실|번지|번길).*$/g, '$1$2');
+            // 번길 또는 로 뒤의 마지막 숫자까지만 추출
+            let core = addr;
+            
+            // 숫자-숫자 패턴 (예: 2278-13)
+            if (core.match(/\d+-\d+/)) {
+              const match = core.match(/(.+\d+-\d+)/);
+              if (match) core = match[1];
+            }
+            // 번길 패턴: 번길 뒤 숫자만 남기기
+            else if (core.includes('번길')) {
+              const match = core.match(/(.+번길\d+)/);
+              if (match) core = match[1];
+            }
+            // 로 패턴: 로 뒤 첫 번째 숫자만 남기기 (번길이 없는 경우)
+            else if (core.includes('로') && !core.includes('번길')) {
+              const match = core.match(/(.+로\d+)/);
+              if (match) core = match[1];
+            }
+            
+            return core;
           };
           
           const coreShipmentAddr = extractCoreAddress(normalizedShipmentAddress);
