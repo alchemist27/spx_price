@@ -84,6 +84,7 @@ export default function OrderManagement() {
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [deliveryStatuses, setDeliveryStatuses] = useState<Map<string, string>>(new Map());
   const [isCheckingDeliveryStatus, setIsCheckingDeliveryStatus] = useState(false);
+  const [deliveryCheckProgress, setDeliveryCheckProgress] = useState({ current: 0, total: 0 });
   const [isProcessingDelivered, setIsProcessingDelivered] = useState(false);
   const [isShipmentModalOpen, setIsShipmentModalOpen] = useState(false);
   const [pendingShipments, setPendingShipments] = useState<Map<string, string>>(new Map()); // 자동입력된 송장번호 임시 저장
@@ -174,8 +175,9 @@ export default function OrderManagement() {
       if (statusCode) {
         params.append('order_status', statusCode);
       }
-      params.append('limit', '20');
-      params.append('offset', offset.toString());
+      // 페이지네이션 제한 제거 - 전체 데이터 조회
+      // params.append('limit', '20');
+      // params.append('offset', offset.toString());
 
       const response = await axios.get(`/api/orders?${params.toString()}`);
       
@@ -248,10 +250,11 @@ export default function OrderManagement() {
     loadOrdersWithDates(startDate, endDate, offset, append);
   };
 
+  // 전체 데이터를 조회하므로 더보기 기능 비활성화
   const loadMoreOrders = () => {
-    if (!isLoadingOrders && hasMore) {
-      loadOrders(currentOffset + 20, true);
-    }
+    // if (!isLoadingOrders && hasMore) {
+    //   loadOrders(currentOffset + 20, true);
+    // }
   };
 
   const handleTabChange = async (tab: string) => {
@@ -783,14 +786,28 @@ export default function OrderManagement() {
     }
   };
 
-  // 배송 상태 조회 함수
-  const checkDeliveryStatus = async () => {
+  // 배송 상태 조회 함수 (자동처리 옵션 추가)
+  const checkDeliveryStatus = async (autoProcess: boolean = false) => {
     if (activeTab !== '배송중') return;
     
     setIsCheckingDeliveryStatus(true);
     const newStatuses = new Map(deliveryStatuses);
     let checkedCount = 0;
     let deliveredCount = 0;
+    
+    // 조회할 총 건수 계산
+    let totalToCheck = 0;
+    for (const order of orders) {
+      if (order.shipments && order.shipments.length > 0) {
+        for (const shipment of order.shipments) {
+          if (shipment.tracking_no) {
+            totalToCheck++;
+          }
+        }
+      }
+    }
+    
+    setDeliveryCheckProgress({ current: 0, total: totalToCheck });
 
     try {
       for (const order of orders) {
@@ -832,6 +849,9 @@ track(
                 const data = await response.json();
                 checkedCount++;
                 
+                // 진행 상황 업데이트
+                setDeliveryCheckProgress({ current: checkedCount, total: totalToCheck });
+                
                 if (data?.data?.track?.lastEvent?.status?.code === "DELIVERED") {
                   newStatuses.set(order.order_id, "DELIVERED");
                   deliveredCount++;
@@ -843,6 +863,8 @@ track(
                 await new Promise(resolve => setTimeout(resolve, 300));
               } catch (error) {
                 console.error(`송장번호 ${shipment.tracking_no} 조회 실패:`, error);
+                checkedCount++;
+                setDeliveryCheckProgress({ current: checkedCount, total: totalToCheck });
               }
             }
           }
@@ -853,6 +875,68 @@ track(
       
       if (checkedCount > 0) {
         toast.success(`${checkedCount}개 주문 배송상태 조회 완료 (배송완료: ${deliveredCount}개)`);
+        
+        // 자동처리 옵션이 켜져있고 배송완료된 주문이 있으면 자동으로 처리
+        if (autoProcess && deliveredCount > 0) {
+          const deliveredOrders: Order[] = [];
+          newStatuses.forEach((status, orderId) => {
+            if (status === 'DELIVERED') {
+              const order = orders.find(o => o.order_id === orderId);
+              if (order && order.shipments && order.shipments.length > 0) {
+                deliveredOrders.push(order);
+              }
+            }
+          });
+          
+          if (deliveredOrders.length > 0) {
+            toast.loading('배송완료 주문을 자동으로 처리 중...', { id: 'auto-process' });
+            
+            // 배송완료 처리 API 호출
+            const shipmentsToUpdate = [];
+            for (const order of deliveredOrders) {
+              if (order.shipments && order.shipments.length > 0) {
+                for (const shipment of order.shipments) {
+                  shipmentsToUpdate.push({
+                    order_id: order.order_id,
+                    shipping_code: shipment.shipping_code,
+                    status: 'shipped' // 배송완료
+                  });
+                }
+              }
+            }
+            
+            try {
+              const response = await fetch('/api/shipments/update', {
+                method: 'PUT',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  orders: shipmentsToUpdate
+                })
+              });
+              
+              const result = await response.json();
+              
+              if (response.ok) {
+                toast.success(
+                  `${deliveredOrders.length}개 주문을 자동으로 배송완료 처리했습니다.`,
+                  { duration: 5000, id: 'auto-process' }
+                );
+                
+                // 1초 후 주문 목록 새로고침
+                setTimeout(() => {
+                  loadOrders();
+                }, 1000);
+              } else {
+                toast.error(result.error || '자동 배송완료 처리에 실패했습니다.', { id: 'auto-process' });
+              }
+            } catch (error) {
+              console.error('자동 배송완료 처리 오류:', error);
+              toast.error('자동 배송완료 처리 중 오류가 발생했습니다.', { id: 'auto-process' });
+            }
+          }
+        }
       } else {
         toast('조회 가능한 송장번호가 없습니다.', { icon: '📋' });
       }
@@ -1057,19 +1141,36 @@ track(
             {activeTab === '배송중' && orders.length > 0 && (
               <div className="flex items-center gap-2">
                 <button
-                  onClick={checkDeliveryStatus}
+                  onClick={() => checkDeliveryStatus(false)}
                   disabled={isCheckingDeliveryStatus}
                   className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 text-sm font-medium"
                 >
                   {isCheckingDeliveryStatus ? (
                     <>
                       <RefreshCw className="h-4 w-4 animate-spin" />
-                      조회 중...
+                      조회 중... ({deliveryCheckProgress.current}/{deliveryCheckProgress.total})
                     </>
                   ) : (
                     <>
                       <Truck className="h-4 w-4" />
                       배송상태 조회
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={() => checkDeliveryStatus(true)}
+                  disabled={isCheckingDeliveryStatus}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2 text-sm font-medium"
+                >
+                  {isCheckingDeliveryStatus ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      조회 중... ({deliveryCheckProgress.current}/{deliveryCheckProgress.total})
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="h-4 w-4" />
+                      배송조회 후 배송완료 자동처리
                     </>
                   )}
                 </button>
@@ -1472,7 +1573,7 @@ track(
                     ) : (
                       <>
                         <Download className="h-4 w-4" />
-                        더 많은 주문 불러오기 (20건씩)
+                        더 많은 주문 불러오기
                       </>
                     )}
                   </button>
