@@ -857,7 +857,10 @@ export default function OrderManagement() {
           body: JSON.stringify({
             query: `query Track($carrierId: ID!, $trackingNumber: String!) {
               track(carrierId: $carrierId, trackingNumber: $trackingNumber) {
-                lastEvent { status { code } }
+                lastEvent { 
+                  time
+                  status { code }
+                }
               }
             }`,
             variables: {
@@ -868,7 +871,15 @@ export default function OrderManagement() {
         });
 
         const data = await response.json();
-        const statusCode = data?.data?.track?.lastEvent?.status?.code || 'UNKNOWN';
+        
+        // 응답 확인
+        if (!data?.data?.track) {
+          console.warn(`송장번호 ${trackingNo} 조회 결과 없음`);
+          return { success: false, trackingNo, error: 'No tracking data' };
+        }
+        
+        const statusCode = data.data.track.lastEvent?.status?.code || 'IN_TRANSIT';
+        console.log(`송장번호 ${trackingNo} 상태: ${statusCode}`);
         
         // 캐시 저장
         setDeliveryStatusCache(prev => {
@@ -894,8 +905,8 @@ export default function OrderManagement() {
     };
 
     try {
-      // 배치 처리 (3개씩 병렬)
-      const BATCH_SIZE = 3;
+      // 배치 처리 (2개씩 병렬, 안정성 향상)
+      const BATCH_SIZE = 2;
       for (let i = 0; i < toFetch.length; i += BATCH_SIZE) {
         const batch = toFetch.slice(i, i + BATCH_SIZE);
         
@@ -903,22 +914,38 @@ export default function OrderManagement() {
         const promises = batch.map(trackingNo => fetchTrackingStatus(trackingNo));
         const results = await Promise.all(promises);
         
+        // 결과 확인
+        for (const result of results) {
+          if (result.success) {
+            console.log(`조회 성공: ${result.trackingNo} - ${result.status}`);
+          }
+        }
+        
         checkedCount += batch.length;
         setDeliveryCheckProgress({ current: checkedCount, total: totalToCheck });
         
-        // 다음 배치 전 짧은 딜레이 (100ms)
+        // 다음 배치 전 충분한 딜레이 (200ms)
         if (i + BATCH_SIZE < toFetch.length) {
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise(resolve => setTimeout(resolve, 200));
         }
       }
 
       setDeliveryStatuses(newStatuses);
       
+      // 배송완료 개수 재계산 (정확성을 위해)
+      let finalDeliveredCount = 0;
+      newStatuses.forEach((status) => {
+        if (status === 'DELIVERED') {
+          finalDeliveredCount++;
+        }
+      });
+      
       if (checkedCount > 0) {
-        toast.success(`${checkedCount}개 주문 배송상태 조회 완료 (배송완료: ${deliveredCount}개)`);
+        toast.success(`${checkedCount}개 주문 배송상태 조회 완료 (배송완료: ${finalDeliveredCount}개)`);
+        console.log(`조회 완료: 총 ${checkedCount}건, 배송완료 ${finalDeliveredCount}건`);
         
         // 자동처리 옵션이 켜져있고 배송완료된 주문이 있으면 자동으로 처리
-        if (autoProcess && deliveredCount > 0) {
+        if (autoProcess && finalDeliveredCount > 0) {
           const deliveredOrders: Order[] = [];
           newStatuses.forEach((status, orderId) => {
             if (status === 'DELIVERED') {
