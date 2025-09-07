@@ -83,6 +83,7 @@ export default function OrderManagement() {
   const [shipmentCache, setShipmentCache] = useState<Map<string, {data: ShipmentInfo[], timestamp: number}>>(new Map());
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [deliveryStatuses, setDeliveryStatuses] = useState<Map<string, string>>(new Map());
+  const [deliveryStatusCache, setDeliveryStatusCache] = useState<Map<string, {status: string, timestamp: number}>>(new Map());
   const [isCheckingDeliveryStatus, setIsCheckingDeliveryStatus] = useState(false);
   const [deliveryCheckProgress, setDeliveryCheckProgress] = useState({ current: 0, total: 0 });
   const [isProcessingDelivered, setIsProcessingDelivered] = useState(false);
@@ -98,13 +99,13 @@ export default function OrderManagement() {
   const showCheckboxes = ['상품준비중', '배송준비중', '배송중'].includes(activeTab);
 
   useEffect(() => {
-    // 기본 날짜 설정 (최근 30일)
+    // 기본 날짜 설정 (최근 7일)
     const today = new Date();
-    const thirtyDaysAgo = new Date(today);
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const sevenDaysAgo = new Date(today);
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     
     const endDateStr = today.toISOString().split('T')[0];
-    const startDateStr = thirtyDaysAgo.toISOString().split('T')[0];
+    const startDateStr = sevenDaysAgo.toISOString().split('T')[0];
     
     setEndDate(endDateStr);
     setStartDate(startDateStr);
@@ -786,7 +787,7 @@ export default function OrderManagement() {
     }
   };
 
-  // 배송 상태 조회 함수 (자동처리 옵션 추가)
+  // 배송 상태 조회 함수 (성능 개선 버전)
   const checkDeliveryStatus = async (autoProcess: boolean = false) => {
     if (activeTab !== '배송중') return;
     
@@ -794,80 +795,120 @@ export default function OrderManagement() {
     const newStatuses = new Map(deliveryStatuses);
     let checkedCount = 0;
     let deliveredCount = 0;
+    let skippedFromCache = 0;
     
-    // 조회할 총 건수 계산
-    let totalToCheck = 0;
+    // 조회할 송장번호 수집 (중복 제거)
+    const trackingToCheck = new Map<string, string[]>(); // tracking_no -> order_ids[]
+    const orderTrackingMap = new Map<string, string>(); // order_id -> tracking_no
+    
     for (const order of orders) {
       if (order.shipments && order.shipments.length > 0) {
         for (const shipment of order.shipments) {
           if (shipment.tracking_no) {
-            totalToCheck++;
+            if (!trackingToCheck.has(shipment.tracking_no)) {
+              trackingToCheck.set(shipment.tracking_no, []);
+            }
+            trackingToCheck.get(shipment.tracking_no)!.push(order.order_id);
+            orderTrackingMap.set(order.order_id, shipment.tracking_no);
           }
         }
       }
     }
     
+    const totalToCheck = trackingToCheck.size;
     setDeliveryCheckProgress({ current: 0, total: totalToCheck });
+    
+    // 캐시 확인 및 분리
+    const trackingNumbers = Array.from(trackingToCheck.keys());
+    const toFetch: string[] = [];
+    const CACHE_DURATION = 5 * 60 * 1000; // 5분 캐시
+    const now = Date.now();
+    
+    for (const trackingNo of trackingNumbers) {
+      const cached = deliveryStatusCache.get(trackingNo);
+      if (cached && (now - cached.timestamp) < CACHE_DURATION) {
+        // 캐시에서 가져오기
+        const orderIds = trackingToCheck.get(trackingNo) || [];
+        for (const orderId of orderIds) {
+          newStatuses.set(orderId, cached.status);
+          if (cached.status === 'DELIVERED') {
+            deliveredCount++;
+          }
+        }
+        skippedFromCache++;
+        checkedCount++;
+        setDeliveryCheckProgress({ current: checkedCount, total: totalToCheck });
+      } else {
+        toFetch.push(trackingNo);
+      }
+    }
+    
+    console.log(`배송 조회: 총 ${totalToCheck}건, 캐시 사용 ${skippedFromCache}건, API 호출 필요 ${toFetch.length}건`);
+
+    // 배치 처리를 위한 함수
+    const fetchTrackingStatus = async (trackingNo: string) => {
+      try {
+        const response = await fetch("https://apis.tracker.delivery/graphql", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "TRACKQL-API-KEY AA7bdo88pxq1B6L1NNJ9C3p2:8Auszg9Xlm45Zh1CJE8SkEaos8uX99CrvCp7dV6QR3j",
+          },
+          body: JSON.stringify({
+            query: `query Track($carrierId: ID!, $trackingNumber: String!) {
+              track(carrierId: $carrierId, trackingNumber: $trackingNumber) {
+                lastEvent { status { code } }
+              }
+            }`,
+            variables: {
+              carrierId: "kr.hanjin",
+              trackingNumber: trackingNo
+            },
+          }),
+        });
+
+        const data = await response.json();
+        const statusCode = data?.data?.track?.lastEvent?.status?.code || 'UNKNOWN';
+        
+        // 캐시 저장
+        setDeliveryStatusCache(prev => {
+          const newCache = new Map(prev);
+          newCache.set(trackingNo, { status: statusCode, timestamp: Date.now() });
+          return newCache;
+        });
+        
+        // 해당 송장번호를 가진 모든 주문 업데이트
+        const orderIds = trackingToCheck.get(trackingNo) || [];
+        for (const orderId of orderIds) {
+          newStatuses.set(orderId, statusCode);
+          if (statusCode === 'DELIVERED') {
+            deliveredCount++;
+          }
+        }
+        
+        return { success: true, trackingNo, status: statusCode };
+      } catch (error) {
+        console.error(`송장번호 ${trackingNo} 조회 실패:`, error);
+        return { success: false, trackingNo, error };
+      }
+    };
 
     try {
-      for (const order of orders) {
-        // 송장번호가 있는 경우에만 조회
-        if (order.shipments && order.shipments.length > 0) {
-          for (const shipment of order.shipments) {
-            if (shipment.tracking_no) {
-              try {
-                const response = await fetch("https://apis.tracker.delivery/graphql", {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": "TRACKQL-API-KEY AA7bdo88pxq1B6L1NNJ9C3p2:8Auszg9Xlm45Zh1CJE8SkEaos8uX99CrvCp7dV6QR3j",
-                  },
-                  body: JSON.stringify({
-                    query: `query Track(
-$carrierId: ID!,
-$trackingNumber: String!
-) {
-track(
-  carrierId: $carrierId,
-  trackingNumber: $trackingNumber
-) {
-  lastEvent {
-    time
-    status {
-      code
-    }
-  }
-}
-}`.trim(),
-                    variables: {
-                      carrierId: "kr.hanjin",
-                      trackingNumber: shipment.tracking_no
-                    },
-                  }),
-                });
-
-                const data = await response.json();
-                checkedCount++;
-                
-                // 진행 상황 업데이트
-                setDeliveryCheckProgress({ current: checkedCount, total: totalToCheck });
-                
-                if (data?.data?.track?.lastEvent?.status?.code === "DELIVERED") {
-                  newStatuses.set(order.order_id, "DELIVERED");
-                  deliveredCount++;
-                } else if (data?.data?.track?.lastEvent?.status?.code) {
-                  newStatuses.set(order.order_id, data.data.track.lastEvent.status.code);
-                }
-
-                // Rate limit 방지를 위한 딜레이
-                await new Promise(resolve => setTimeout(resolve, 300));
-              } catch (error) {
-                console.error(`송장번호 ${shipment.tracking_no} 조회 실패:`, error);
-                checkedCount++;
-                setDeliveryCheckProgress({ current: checkedCount, total: totalToCheck });
-              }
-            }
-          }
+      // 배치 처리 (3개씩 병렬)
+      const BATCH_SIZE = 3;
+      for (let i = 0; i < toFetch.length; i += BATCH_SIZE) {
+        const batch = toFetch.slice(i, i + BATCH_SIZE);
+        
+        // 배치 내 병렬 처리
+        const promises = batch.map(trackingNo => fetchTrackingStatus(trackingNo));
+        const results = await Promise.all(promises);
+        
+        checkedCount += batch.length;
+        setDeliveryCheckProgress({ current: checkedCount, total: totalToCheck });
+        
+        // 다음 배치 전 짧은 딜레이 (100ms)
+        if (i + BATCH_SIZE < toFetch.length) {
+          await new Promise(resolve => setTimeout(resolve, 100));
         }
       }
 
