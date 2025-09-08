@@ -4,7 +4,7 @@ let trackResponse = await fetch("https://apis.tracker.delivery/graphql", {
     "Content-Type": "application/json",
     // Instructions for obtaining [YOUR_CLIENT_ID] and [YOUR_CLIENT_SECRET] can be found in the documentation below:
     // See: https://tracker.delivery/docs/authentication
-    "Authorization": "TRACKQL-API-KEY AA7bdo88pxq1B6L1NNJ9C3p2:8Auszg9Xlm45Zh1CJE8SkEaos8uX99CrvCp7dV6QR3j",
+    "Authorization": "TRACKQL-API-KEY AA7p8pqwyr0EPvi193UsyMt1:h8OJMXXxCnoSauHO5A3HGIihADIlW6fjszZuMSelruM",
   },
   body: JSON.stringify({
     "query": `query Track(
