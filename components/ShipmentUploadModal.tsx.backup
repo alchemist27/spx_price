@@ -130,127 +130,10 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
     // 공백과 특수문자 제거하고 소문자로
     return cleaned.replace(/[\s\-\(\)]/g, '').toLowerCase();
   };
-  
-  // 개선된 이름 정규화 (직급/호칭 추가 제거)
-  const normalizeNameEnhanced = (name: string) => {
-    if (!name) return '';
-    let cleaned = name.trim();
-    
-    // 확장된 직급/호칭 패턴 (실장, 과장, 대리, 부장, 차장 등 추가)
-    const expandedTitlePattern = /\s*(고객|팀장|원장|본부장|실장|과장|대리|사원|매니저|이사|대표|사장|부장|차장|님|씨|선생님|사장님|대표님|로스터|원두)\**/gi;
-    
-    // 직급/호칭이 이름 뒤에 붙은 경우 제거 (예: "김준열 실장")
-    cleaned = cleaned.replace(/\s+(실장|과장|대리|팀장|부장|차장|이사|사원)$/g, '');
-    cleaned = cleaned.replace(expandedTitlePattern, '');
-    
-    // 별표 제거
-    cleaned = cleaned.replace(/\*/g, '').trim();
-    
-    // 공백과 특수문자 제거하고 소문자로
-    return cleaned.replace(/[\s\-\(\)]/g, '').toLowerCase();
-  };
-  
-  // 회사명 정규화 (주식회사, (주) 등 제거)
-  const normalizeCompanyName = (name: string) => {
-    if (!name) return '';
-    
-    // 앞뒤의 회사 형태 제거
-    let normalized = name
-      .replace(/^(주식회사|주\)|유한회사|합자회사|\(주\))\s*/gi, '')
-      .replace(/\s*(주식회사|주\)|유한회사|합자회사|\(주\))$/gi, '')
-      .trim();
-    
-    // 공백과 특수문자 제거하고 소문자로
-    return normalized.replace(/[\s\-\(\)]/g, '').toLowerCase();
-  };
-  
-  // 비식별 처리된 이름 비교 (별표 무시하고 유사도 체크)
-  const areNamesSimilarWithMasking = (name1: string, name2: string): boolean => {
-    if (!name1 || !name2) return false;
-    
-    // 별표를 제거한 버전
-    const clean1 = name1.replace(/\*/g, '').trim();
-    const clean2 = name2.replace(/\*/g, '').trim();
-    
-    // 완전 일치
-    if (clean1 === clean2) return true;
-    
-    // 정규화 후 비교
-    const normalized1 = normalizeNameEnhanced(clean1);
-    const normalized2 = normalizeNameEnhanced(clean2);
-    if (normalized1 === normalized2) return true;
-    
-    // 한쪽에 별표가 있고, 나머지 부분이 포함관계인 경우
-    // 예: "주식회사 그린로더*" vs "주식회사 그린로더"
-    // 예: "커피통로스터*" vs "커피통로스터"
-    if ((name1.includes('*') || name2.includes('*'))) {
-      const base1 = clean1.toLowerCase();
-      const base2 = clean2.toLowerCase();
-      
-      // 짧은 쪽이 긴 쪽에 포함되는지 확인
-      if (base1.length < base2.length) {
-        return base2.startsWith(base1) || base2.includes(base1);
-      } else {
-        return base1.startsWith(base2) || base1.includes(base2);
-      }
-    }
-    
-    // 글자 대부분이 일치하는지 확인 (80% 이상)
-    const minLength = Math.min(clean1.length, clean2.length);
-    const maxLength = Math.max(clean1.length, clean2.length);
-    
-    if (minLength >= 3 && minLength / maxLength >= 0.8) {
-      // 앞부분이 일치하는지 확인
-      const commonPrefix = getCommonPrefixLength(clean1.toLowerCase(), clean2.toLowerCase());
-      if (commonPrefix >= minLength * 0.8) {
-        return true;
-      }
-    }
-    
-    return false;
-  };
-  
-  // 공통 접두사 길이 계산
-  const getCommonPrefixLength = (str1: string, str2: string): number => {
-    let i = 0;
-    while (i < str1.length && i < str2.length && str1[i] === str2[i]) {
-      i++;
-    }
-    return i;
-  };
 
   const normalizePhone = (phone: string) => {
     if (!phone) return '';
     return phone.replace(/[\s\-()]/g, '');
-  };
-  
-  // 도로명 주소의 기본 부분만 추출 (동/호 정보 제외)
-  const extractBaseAddress = (address: string) => {
-    if (!address) return '';
-    
-    // 먼저 기본 정규화 적용
-    const normalized = normalizeAddress(address);
-    
-    // 도로명 주소 패턴에서 기본 부분만 추출
-    // 예: "경기안양시동안구귀인로172번길42" → "경기안양시동안구귀인로172번길42"
-    // 예: "대구수성구들안로42길24" → "대구수성구들안로42길24"
-    
-    // 번지/번길 뒤의 숫자까지만 추출 (건물명, 동호수 제외)
-    const patterns = [
-      /(.*?(?:로|길)\d+번길\d+)/,  // ~로123번길45
-      /(.*?(?:로|길)\d+-\d+)/,      // ~로123-45
-      /(.*?(?:로|길)\d+)/,          // ~로123
-    ];
-    
-    for (const pattern of patterns) {
-      const match = normalized.match(pattern);
-      if (match) {
-        return match[1];
-      }
-    }
-    
-    // 패턴이 매칭되지 않으면 원본 정규화 주소 반환
-    return normalized;
   };
 
   const processExcelFile = (file: File) => {
@@ -385,47 +268,6 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
     const matchingLog: any[] = [];
     const matchedOrderIds = new Set<string>(); // 이미 매칭된 주문번호 추적
     
-    // 동일 수령자의 분할 주문 처리를 위한 맵
-    const customerOrdersMap = new Map<string, string[]>(); // 정규화된 이름 -> 주문ID 배열
-    const customerShipmentsMap = new Map<string, ShipmentData[]>(); // 정규화된 이름 -> 송장 배열
-    
-    // 주문을 고객별로 그룹화
-    orders.forEach(order => {
-      const normalizedName = normalizeName(order.receiver_name);
-      const enhancedName = normalizeNameEnhanced(order.receiver_name);
-      const companyName = normalizeCompanyName(order.receiver_name);
-      
-      // 여러 정규화 방식으로 그룹화
-      [normalizedName, enhancedName, companyName].forEach(name => {
-        if (name && !matchedOrderIds.has(order.order_id)) {
-          if (!customerOrdersMap.has(name)) {
-            customerOrdersMap.set(name, []);
-          }
-          if (!customerOrdersMap.get(name)!.includes(order.order_id)) {
-            customerOrdersMap.get(name)!.push(order.order_id);
-          }
-        }
-      });
-    });
-    
-    // 송장을 고객별로 그룹화
-    shipmentData.forEach(shipment => {
-      const normalizedName = normalizeName(shipment.receiverName);
-      const enhancedName = normalizeNameEnhanced(shipment.receiverName);
-      const companyName = normalizeCompanyName(shipment.receiverName);
-      
-      [normalizedName, enhancedName, companyName].forEach(name => {
-        if (name) {
-          if (!customerShipmentsMap.has(name)) {
-            customerShipmentsMap.set(name, []);
-          }
-          if (!customerShipmentsMap.get(name)!.includes(shipment)) {
-            customerShipmentsMap.get(name)!.push(shipment);
-          }
-        }
-      });
-    });
-    
     // 디버깅: 주문 데이터 샘플 출력
     console.log('주문 데이터 샘플 (처음 3개):', orders.slice(0, 3).map(order => ({
       order_id: order.order_id,
@@ -434,11 +276,10 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
       receiver_address: order.receiver_address
     })));
     
-    console.log('🚚 개선된 매칭 모드: 하이브리드 접근법 (기존 로직 + 개선 로직)');
-    console.log('📌 동일 고객 분할 주문 자동 감지 및 처리');
+    console.log('🚚 중복 제거 모드: 동일 주문번호의 여러 상품은 첫 번째 송장번호만 사용');
+    console.log('📌 주의: 동일 고객의 서로 다른 주문은 각각 송장 할당됨');
     
     shipmentData.forEach((shipment, index) => {
-      // ===== 1단계: 기존 정규화 시도 =====
       const normalizedShipmentName = normalizeName(shipment.receiverName);
       const normalizedShipmentAddress = normalizeAddress(shipment.receiverAddress);
       const normalizedShipmentPhone = normalizePhone(shipment.receiverPhone);
@@ -493,27 +334,11 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
       
       let matchFound = false;
       let matchType: 'exact' | 'partial' | 'manual' = 'manual';
-      let matchedOrder: any = null;
       
-      // ===== 기존 로직으로 먼저 시도 =====
-      // 1순위: 수하인명 매칭 (기존 정규화 + 비식별 처리 지원)
+      // 1순위: 수하인명 매칭
       const nameMatchOrders = orders.filter(order => {
-        if (matchedOrderIds.has(order.order_id)) return false;
-        
         const normalizedOrderName = normalizeName(order.receiver_name);
-        
-        // 기본 정규화 매칭
-        if (normalizedOrderName === normalizedShipmentName) {
-          return true;
-        }
-        
-        // 비식별 처리된 이름도 체크 (별표 포함된 경우)
-        if ((shipment.receiverName.includes('*') || order.receiver_name.includes('*')) &&
-            areNamesSimilarWithMasking(shipment.receiverName, order.receiver_name)) {
-          return true;
-        }
-        
-        return false;
+        return normalizedOrderName === normalizedShipmentName;
       });
       
       // 디버깅: 이름 매칭 결과
@@ -574,15 +399,13 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
         matchType = 'exact';
         matchedOrderIds.add(orderId); // 매칭된 주문번호 추가
         
-        const isMasked = shipment.receiverName.includes('*') || nameMatchOrders[0].receiver_name.includes('*');
-        
         matchingLog.push({
           row: index + 1,
           trackingNo: shipment.trackingNo,
           shipmentName: shipment.receiverName,
           matchedOrderId: orderId,
           matchedName: nameMatchOrders[0].receiver_name,
-          matchMethod: isMasked ? '1순위: 수하인명 매칭 (비식별 처리)' : '1순위: 수하인명 매칭',
+          matchMethod: '1순위: 수하인명 매칭',
           success: true
         });
       } else if (nameMatchOrders.length > 1) {
@@ -823,166 +646,8 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
         }
       }
       
-      // ===== 개선된 로직 적용 (기존 매칭 실패 시) =====
+      // 매칭 실패 로그
       if (!matchFound) {
-        console.log(`🔄 개선된 매칭 시도 [${index + 1}번째 송장]`);
-        
-        // 개선된 이름 정규화로 재시도
-        const enhancedShipmentName = normalizeNameEnhanced(shipment.receiverName);
-        const companyShipmentName = normalizeCompanyName(shipment.receiverName);
-        
-        // 개선된 이름 매칭 (비식별 처리 포함)
-        const enhancedNameMatches = orders.filter(order => {
-          if (matchedOrderIds.has(order.order_id)) return false;
-          
-          const enhancedOrderName = normalizeNameEnhanced(order.receiver_name);
-          const companyOrderName = normalizeCompanyName(order.receiver_name);
-          
-          // 기본 정규화 매칭
-          if (enhancedOrderName === enhancedShipmentName || 
-              companyOrderName === companyShipmentName ||
-              (companyShipmentName && companyOrderName && companyOrderName === companyShipmentName)) {
-            return true;
-          }
-          
-          // 비식별 처리된 이름 매칭 (별표 포함)
-          if (areNamesSimilarWithMasking(shipment.receiverName, order.receiver_name)) {
-            console.log(`🔍 비식별 이름 매칭 감지:`, {
-              송장: shipment.receiverName,
-              주문: order.receiver_name
-            });
-            return true;
-          }
-          
-          return false;
-        });
-        
-        if (enhancedNameMatches.length === 1) {
-          const orderId = enhancedNameMatches[0].order_id;
-          matched.push({
-            orderId: orderId,
-            receiverName: enhancedNameMatches[0].receiver_name,
-            receiverAddress: enhancedNameMatches[0].receiver_address,
-            trackingNo: shipment.trackingNo,
-            matchType: 'partial'
-          });
-          matchFound = true;
-          matchedOrderIds.add(orderId);
-          
-          const isMaskedMatch = areNamesSimilarWithMasking(shipment.receiverName, enhancedNameMatches[0].receiver_name);
-          
-          matchingLog.push({
-            row: index + 1,
-            trackingNo: shipment.trackingNo,
-            shipmentName: shipment.receiverName,
-            matchedOrderId: orderId,
-            matchedName: enhancedNameMatches[0].receiver_name,
-            matchMethod: isMaskedMatch ? '개선: 비식별 이름 매칭 (별표 처리)' : '개선: 확장된 이름 정규화 매칭',
-            success: true
-          });
-        } else if (enhancedNameMatches.length > 1) {
-          // 주소로 추가 필터링
-          const baseShipmentAddr = extractBaseAddress(shipment.receiverAddress);
-          const addressFilteredMatches = enhancedNameMatches.filter(order => {
-            const baseOrderAddr = extractBaseAddress(order.receiver_address);
-            return baseShipmentAddr === baseOrderAddr || 
-                   baseOrderAddr.includes(baseShipmentAddr) || 
-                   baseShipmentAddr.includes(baseOrderAddr);
-          });
-          
-          if (addressFilteredMatches.length === 1) {
-            const orderId = addressFilteredMatches[0].order_id;
-            matched.push({
-              orderId: orderId,
-              receiverName: addressFilteredMatches[0].receiver_name,
-              receiverAddress: addressFilteredMatches[0].receiver_address,
-              trackingNo: shipment.trackingNo,
-              matchType: 'partial'
-            });
-            matchFound = true;
-            matchedOrderIds.add(orderId);
-            
-            matchingLog.push({
-              row: index + 1,
-              trackingNo: shipment.trackingNo,
-              shipmentName: shipment.receiverName,
-              matchedOrderId: orderId,
-              matchedName: addressFilteredMatches[0].receiver_name,
-              matchMethod: '개선: 이름 + 기본주소 매칭',
-              success: true
-            });
-          }
-        }
-        
-        // 기본 주소만으로 매칭 시도 (이름 매칭 실패 시)
-        if (!matchFound) {
-          const baseShipmentAddr = extractBaseAddress(shipment.receiverAddress);
-          if (baseShipmentAddr && baseShipmentAddr.length > 10) { // 너무 짧은 주소는 제외
-            const baseAddressMatches = orders.filter(order => {
-              if (matchedOrderIds.has(order.order_id)) return false;
-              const baseOrderAddr = extractBaseAddress(order.receiver_address);
-              return baseShipmentAddr === baseOrderAddr;
-            });
-            
-            if (baseAddressMatches.length === 1) {
-              const orderId = baseAddressMatches[0].order_id;
-              matched.push({
-                orderId: orderId,
-                receiverName: baseAddressMatches[0].receiver_name,
-                receiverAddress: baseAddressMatches[0].receiver_address,
-                trackingNo: shipment.trackingNo,
-                matchType: 'partial'
-              });
-              matchFound = true;
-              matchedOrderIds.add(orderId);
-              
-              const isNameDifferent = normalizeNameEnhanced(baseAddressMatches[0].receiver_name) !== enhancedShipmentName;
-              
-              matchingLog.push({
-                row: index + 1,
-                trackingNo: shipment.trackingNo,
-                shipmentName: shipment.receiverName,
-                shipmentAddress: shipment.receiverAddress,
-                matchedOrderId: orderId,
-                matchedName: baseAddressMatches[0].receiver_name,
-                matchedAddress: baseAddressMatches[0].receiver_address,
-                matchMethod: '개선: 기본 주소 매칭' + (isNameDifferent ? ' (이름 불일치)' : ''),
-                success: true,
-                note: isNameDifferent ? `송장: ${shipment.receiverName} ≠ 주문: ${baseAddressMatches[0].receiver_name}` : undefined
-              });
-            }
-          }
-        }
-      }
-      
-      // 최종 매칭 실패 로그
-      if (!matchFound) {
-        // 동일 고객의 분할 주문 가능성 체크
-        const possibleSplitOrdersSet = new Set<string>();
-        
-        // 여러 정규화 방식으로 가능한 주문 찾기
-        const normalizedNames = [
-          normalizeName(shipment.receiverName),
-          normalizeNameEnhanced(shipment.receiverName),
-          normalizeCompanyName(shipment.receiverName)
-        ].filter(name => name); // 빈 문자열 제거
-        
-        normalizedNames.forEach(name => {
-          if (customerOrdersMap.has(name)) {
-            const customerOrders = customerOrdersMap.get(name)!.filter(id => !matchedOrderIds.has(id));
-            customerOrders.forEach(orderId => possibleSplitOrdersSet.add(orderId));
-          }
-        });
-        
-        const possibleSplitOrders = Array.from(possibleSplitOrdersSet);
-        
-        if (possibleSplitOrders.length > 0) {
-          console.log(`⚠️ 분할 주문 가능성 감지 [${index + 1}번째]:`, {
-            송장: shipment.receiverName,
-            가능한주문: possibleSplitOrders
-          });
-        }
-        
         matchingLog.push({
           row: index + 1,
           trackingNo: shipment.trackingNo,
@@ -991,8 +656,7 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
           shipmentAddress: shipment.receiverAddress,
           matchMethod: '매칭 실패',
           success: false,
-          reason: '일치하는 주문을 찾을 수 없음',
-          possibleSplitOrders: possibleSplitOrders.length > 0 ? possibleSplitOrders : undefined
+          reason: '일치하는 주문을 찾을 수 없음'
         });
       }
     });
@@ -1002,26 +666,12 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
     const partialMatchList = matched.filter(m => m.matchType === 'partial');
     const failedMatchList = matchingLog.filter(log => !log.success);
     
-    // 개선된 매칭 통계
-    const improvedMatches = matchingLog.filter(log => log.success && log.matchMethod?.includes('개선'));
-    const legacyMatches = matchingLog.filter(log => log.success && !log.matchMethod?.includes('개선'));
-    
     // 디버깅 로그 출력
-    console.group('📦 송장 매칭 결과 (개선된 버전)');
+    console.group('📦 송장 매칭 결과');
     console.log(`총 ${shipmentData.length}개 송장 처리`);
     console.log(`✅ 정확 매칭: ${exactMatches.length}개`);
     console.log(`⚠️ 부분 매칭: ${partialMatchList.length}개`);
     console.log(`❌ 매칭 실패: ${failedMatchList.length}개`);
-    console.log('---');
-    console.log(`🔄 기존 로직 매칭: ${legacyMatches.length}개`);
-    console.log(`✨ 개선 로직 매칭: ${improvedMatches.length}개 (추가 매칭)`);
-    
-    // 분할 주문 가능성이 있는 실패 건
-    const splitOrderCandidates = failedMatchList.filter(f => f.possibleSplitOrders?.length > 0);
-    if (splitOrderCandidates.length > 0) {
-      console.log(`📌 분할 주문 가능성: ${splitOrderCandidates.length}개`);
-    }
-    
     console.table(matchingLog);
     console.groupEnd();
 
@@ -1122,7 +772,7 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
         body: JSON.stringify({
           tracking_no: cleanedTrackingNo,
           shipping_company_code: '0018', // 한진택배
-          status: 'standby' // 배송대기 상태로 먼저 등록
+          status: 'standby'
         })
       });
 
@@ -1134,15 +784,19 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
         const shippingCode = registerResult.shipment?.shipping_code;
         
         if (shippingCode) {
-          // Step 2: 배송중으로 상태 변경 (카페24 공식 API 사용)
-          console.log('🚚 배송중 상태 변경 시도...');
-          const statusUpdateResponse = await fetch(`/api/orders/${match.orderId}/shipments/${shippingCode}`, {
+          // Step 2: 배송중으로 상태 변경
+          console.log('🚚 [2/2] 배송중 상태 변경...');
+          const statusUpdateResponse = await fetch('/api/shipments/update', {
             method: 'PUT',
             headers: {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              status: 'shipping' // 배송중으로 변경
+              orders: [{
+                order_id: match.orderId,
+                shipping_code: shippingCode,
+                status: 'shipping'
+              }]
             })
           });
           
@@ -1160,28 +814,18 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
             }));
             toast.success(`주문 ${match.orderId} 처리 완료`);
           } else {
-            console.warn('⚠️ 상태 변경 실패:', statusUpdateResult);
-            setProcessingStatus(prev => ({
-              ...prev,
-              [orderKey]: { 
-                status: 'success', 
-                message: '송장 등록됨 (상태 변경 실패)'
-              }
-            }));
-            toast(`주문 ${match.orderId}: 송장 등록 완료 (배송중 변경 실패)`, {
-              icon: '⚠️'
-            });
+            throw new Error(`상태 변경 실패: ${statusUpdateResult.error}`);
           }
         } else {
-          // shipping_code가 없으면 상태 변경 불가
+          // 송장은 등록되었지만 shipping_code가 없음
           setProcessingStatus(prev => ({
             ...prev,
             [orderKey]: { 
               status: 'success', 
-              message: '송장 등록됨'
+              message: '송장 등록 완료 (상태 변경 실패)'
             }
           }));
-          toast(`주문 ${match.orderId}: 송장 등록 완료`, {
+          toast(`주문 ${match.orderId}: 송장 등록 완료 (상태 변경 실패)`, {
             icon: '⚠️'
           });
         }
@@ -1244,7 +888,7 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
           // 송장번호 형식 정리 (공백, 하이픈 제거)
           const cleanedTrackingNo = match.trackingNo.replace(/[\s\-]/g, '').trim();
           
-          // Step 1: 송장번호 등록
+          // Step 1: 개별 송장번호 등록
           console.log('📝 [1/2] 송장번호 등록 시작...');
           console.log('  원본 송장번호:', match.trackingNo);
           console.log('  정리된 송장번호:', cleanedTrackingNo);
@@ -1257,7 +901,7 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
             body: JSON.stringify({
               tracking_no: cleanedTrackingNo,
               shipping_company_code: '0018', // 한진택배
-              status: 'standby' // 배송대기 상태로 먼저 등록
+              status: 'standby' // 배송준비중으로 먼저 등록
             })
           });
 
@@ -1273,15 +917,19 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
             if (shippingCode) {
               console.log('🔑 Shipping Code:', shippingCode);
               
-              // Step 2: 배송중으로 상태 변경 (카페24 공식 API 사용)
+              // Step 2: 배송중으로 상태 변경
               console.log('🚚 [2/2] 배송중(shipping)으로 상태 변경 시작...');
-              const statusUpdateResponse = await fetch(`/api/orders/${match.orderId}/shipments/${shippingCode}`, {
+              const statusUpdateResponse = await fetch('/api/shipments/update', {
                 method: 'PUT',
                 headers: {
                   'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                  status: 'shipping' // 배송중
+                  orders: [{
+                    order_id: match.orderId,
+                    shipping_code: shippingCode,
+                    status: 'shipping' // 배송중
+                  }]
                 })
               });
               
@@ -1289,6 +937,7 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
               
               if (statusUpdateResponse.ok) {
                 console.log('✅ 배송중 상태 변경 성공');
+                console.log('📌 Status Update Response:', statusUpdateResult);
                 totalSuccess++;
                 succeeded.push({
                   orderId: match.orderId,
@@ -1297,7 +946,8 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
                   shippingCode: shippingCode
                 });
               } else {
-                console.error('❌ 배송중 상태 변경 실패:', statusUpdateResult);
+                console.error('❌ 배송중 상태 변경 실패');
+                console.error('Error:', statusUpdateResult);
                 failed.push({
                   orderId: match.orderId,
                   trackingNo: match.trackingNo,
@@ -1306,13 +956,13 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
               }
             } else {
               console.warn('⚠️ shipping_code를 찾을 수 없음');
-              // 송장은 등록되었지만 상태 변경은 불가
-              totalSuccess++; // 송장 등록은 성공
+              // 송장은 등록되었지만 상태 변경은 실패
+              totalSuccess++; // 송장 등록은 성공했으므로 카운트
               succeeded.push({
                 orderId: match.orderId,
                 trackingNo: match.trackingNo,
                 receiverName: match.receiverName,
-                warning: '송장 등록 성공 (상태 변경 불가)'
+                warning: '송장 등록은 성공했으나 배송중 상태 변경 실패'
               });
             }
           } else {
