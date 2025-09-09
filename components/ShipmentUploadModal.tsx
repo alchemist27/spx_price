@@ -122,7 +122,8 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
     
     // "고객*", "팀장*" 등의 패턴 제거 - 더 포괄적으로
     // 공백이 있든 없든 처리 (예: "박병준 고객*", "박병준고객*")
-    cleaned = cleaned.replace(/\s*(고객|팀장|원장|본부장|로스터|원두|님|씨|선생님|사장님|대표님)\**/gi, '');
+    // 담당자, 사장 패턴 추가
+    cleaned = cleaned.replace(/\s*(고객|팀장|원장|본부장|로스터|원두|님|씨|선생님|사장님|대표님|담당자|사장)\**/gi, '');
     
     // 별표 제거
     cleaned = cleaned.replace(/\*/g, '').trim();
@@ -136,11 +137,11 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
     if (!name) return '';
     let cleaned = name.trim();
     
-    // 확장된 직급/호칭 패턴 (실장, 과장, 대리, 부장, 차장 등 추가)
-    const expandedTitlePattern = /\s*(고객|팀장|원장|본부장|실장|과장|대리|사원|매니저|이사|대표|사장|부장|차장|님|씨|선생님|사장님|대표님|로스터|원두)\**/gi;
+    // 확장된 직급/호칭 패턴 (실장, 과장, 대리, 부장, 차장, 담당자, 사장 등 추가)
+    const expandedTitlePattern = /\s*(고객|팀장|원장|본부장|실장|과장|대리|사원|매니저|이사|대표|사장|부장|차장|님|씨|선생님|사장님|대표님|로스터|원두|담당자)\**/gi;
     
     // 직급/호칭이 이름 뒤에 붙은 경우 제거 (예: "김준열 실장")
-    cleaned = cleaned.replace(/\s+(실장|과장|대리|팀장|부장|차장|이사|사원)$/g, '');
+    cleaned = cleaned.replace(/\s+(실장|과장|대리|팀장|부장|차장|이사|사원|담당자|사장)$/g, '');
     cleaned = cleaned.replace(expandedTitlePattern, '');
     
     // 별표 제거
