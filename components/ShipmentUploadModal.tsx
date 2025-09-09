@@ -49,6 +49,7 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
   const [partialMatches, setPartialMatches] = useState<MatchedOrder[]>([]); // 부분 매칭 항목
   const [manualMatches, setManualMatches] = useState<Map<string, string>>(new Map()); // 수동 매칭: trackingNo -> orderId
   const [processingStatus, setProcessingStatus] = useState<ProcessingStatus>({}); // 개별 처리 상태
+  const [activeTab, setActiveTab] = useState<'matched' | 'unmatched'>('matched'); // 탭 상태
 
   const normalizeString = (str: string) => {
     if (!str) return '';
@@ -1116,6 +1117,138 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
     setManualMatches(newManualMatches);
   };
 
+  // 일괄 처리 함수 (API 제한 고려하여 순차 처리)
+  const handleBatchProcess = async () => {
+    setIsProcessing(true);
+    
+    // 아직 처리되지 않은 주문들만 필터링
+    const unprocessedOrders = matchedOrders.filter(match => {
+      const orderKey = `${match.orderId}-${match.trackingNo}`;
+      const status = processingStatus[orderKey];
+      return !status || status.status === 'failed';
+    });
+    
+    console.log(`일괄 처리 시작: ${unprocessedOrders.length}개 주문`);
+    
+    for (let i = 0; i < unprocessedOrders.length; i++) {
+      const match = unprocessedOrders[i];
+      const orderKey = `${match.orderId}-${match.trackingNo}`;
+      
+      // 처리 시작 상태 설정
+      setProcessingStatus(prev => ({
+        ...prev,
+        [orderKey]: { status: 'processing', message: '처리 중...' }
+      }));
+      
+      try {
+        // 송장번호 형식 정리
+        const cleanedTrackingNo = match.trackingNo.replace(/[\s\-]/g, '').trim();
+        
+        console.log(`[${i + 1}/${unprocessedOrders.length}] 주문 ${match.orderId} 처리 중...`);
+        
+        // Step 1: 송장번호 등록
+        const registerResponse = await fetch(`/api/orders/${match.orderId}/shipments`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            tracking_no: cleanedTrackingNo,
+            shipping_company_code: '0018', // 한진택배
+            status: 'shipping' // 바로 배송중 상태로 등록 시도
+          })
+        });
+
+        const registerResult = await registerResponse.json();
+        
+        if (registerResponse.ok) {
+          const shippingCode = registerResult.shipment?.shipping_code;
+          
+          // 배송중으로 직접 등록되었는지 확인
+          if (registerResult.shipment?.status === 'shipping') {
+            setProcessingStatus(prev => ({
+              ...prev,
+              [orderKey]: { 
+                status: 'success', 
+                message: '완료',
+                shippingCode: shippingCode
+              }
+            }));
+          } else if (shippingCode && registerResult.shipment?.status !== 'shipping') {
+            // Step 2: 배송중으로 상태 변경 필요
+            const statusUpdateResponse = await fetch(`/api/orders/${match.orderId}/shipments/${shippingCode}`, {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                status: 'shipping'
+              })
+            });
+            
+            if (statusUpdateResponse.ok) {
+              setProcessingStatus(prev => ({
+                ...prev,
+                [orderKey]: { 
+                  status: 'success', 
+                  message: '완료',
+                  shippingCode: shippingCode
+                }
+              }));
+            } else {
+              setProcessingStatus(prev => ({
+                ...prev,
+                [orderKey]: { 
+                  status: 'success', 
+                  message: '송장 등록됨 (상태 변경 실패)'
+                }
+              }));
+            }
+          } else {
+            setProcessingStatus(prev => ({
+              ...prev,
+              [orderKey]: { 
+                status: 'success', 
+                message: '송장 등록됨'
+              }
+            }));
+          }
+        } else {
+          throw new Error(registerResult.error || '송장 등록 실패');
+        }
+        
+        // API 호출 제한 방지를 위한 딜레이 (0.5초)
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+      } catch (error: any) {
+        console.error(`주문 ${match.orderId} 처리 실패:`, error);
+        setProcessingStatus(prev => ({
+          ...prev,
+          [orderKey]: { 
+            status: 'failed', 
+            message: error.message || '처리 실패'
+          }
+        }));
+      }
+    }
+    
+    setIsProcessing(false);
+    
+    // 처리 완료 후 완료 단계로 이동
+    const successCount = Object.values(processingStatus).filter(s => s.status === 'success').length;
+    const failedCount = Object.values(processingStatus).filter(s => s.status === 'failed').length;
+    
+    console.log(`일괄 처리 완료: 성공 ${successCount}건, 실패 ${failedCount}건`);
+    
+    if (successCount > 0) {
+      toast.success(`${successCount}개 주문 처리 완료`);
+      onUploadComplete();
+    }
+    if (failedCount > 0) {
+      toast.error(`${failedCount}개 주문 처리 실패`);
+    }
+  };
+
   // 개별 주문 처리 함수
   const handleProcessSingleOrder = async (match: MatchedOrder) => {
     const orderKey = `${match.orderId}-${match.trackingNo}`;
@@ -1180,7 +1313,7 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
                 shippingCode: shippingCode
               }
             }));
-            toast.success(`주문 ${match.orderId} 처리 완료`);
+            // toast.success(`주문 ${match.orderId} 처리 완료`); // 알림 제거
           } else {
             console.warn('⚠️ 상태 변경 실패:', statusUpdateResult);
             setProcessingStatus(prev => ({
@@ -1190,9 +1323,7 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
                 message: '송장 등록됨 (상태 변경 실패)'
               }
             }));
-            toast(`주문 ${match.orderId}: 송장 등록 완료 (배송중 변경 실패)`, {
-              icon: '⚠️'
-            });
+            // toast 알림 제거
           }
         } else {
           // shipping_code가 없으면 상태 변경 불가
@@ -1203,9 +1334,7 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
               message: '송장 등록됨'
             }
           }));
-          toast(`주문 ${match.orderId}: 송장 등록 완료`, {
-            icon: '⚠️'
-          });
+          // toast 알림 제거
         }
       } else {
         console.error('❌ 송장 등록 API 실패 응답:', registerResult);
@@ -1227,7 +1356,7 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
           message: error.message || '처리 실패'
         }
       }));
-      toast.error(`주문 ${match.orderId} 처리 실패: ${error.message}`);
+      // toast.error(`주문 ${match.orderId} 처리 실패: ${error.message}`); // 알림 제거
     } finally {
       console.groupEnd();
     }
@@ -1585,46 +1714,49 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
               {/* 탭 버튼 */}
               <div className="flex gap-2 mb-4 border-b border-gray-200">
                 <button
-                  className="px-4 py-2 border-b-2 border-blue-500 text-blue-600 font-medium"
+                  className={`px-4 py-2 border-b-2 ${
+                    activeTab === 'matched' 
+                      ? 'border-blue-500 text-blue-600 font-medium' 
+                      : 'border-transparent text-gray-600 hover:text-gray-800'
+                  }`}
+                  onClick={() => setActiveTab('matched')}
                 >
                   송장 할당된 주문 ({matchedOrders.length})
                 </button>
                 {orders.length > matchedOrders.length && (
                   <button
-                    className="px-4 py-2 border-b-2 border-transparent text-gray-600 hover:text-gray-800"
-                    onClick={() => {
-                      // 미할당 주문 목록 표시 토글 (추후 구현)
-                    }}
+                    className={`px-4 py-2 border-b-2 ${
+                      activeTab === 'unmatched' 
+                        ? 'border-blue-500 text-blue-600 font-medium' 
+                        : 'border-transparent text-gray-600 hover:text-gray-800'
+                    }`}
+                    onClick={() => setActiveTab('unmatched')}
                   >
-                    송장 미할당 주문 ({orders.length - matchedOrders.length})
-                  </button>
-                )}
-                {failedMatches.filter(f => !f.skipped).length > 0 && (
-                  <button
-                    className="px-4 py-2 border-b-2 border-transparent text-gray-600 hover:text-gray-800"
-                    onClick={() => {
-                      // 매칭 실패 송장 목록 표시 토글
-                    }}
-                  >
-                    매칭 실패 송장 ({failedMatches.filter(f => !f.skipped).length})
+                    송장 미할당 주문 ({orders.filter(o => {
+                      const method = (o.shipping_method?.toLowerCase() || '') + (o.shipping_type?.toLowerCase() || '');
+                      const isDelivery = !['직접', '방문', '화물', 'pickup', 'direct', 'cargo', 'freight'].some(m => method.includes(m));
+                      return isDelivery && !matchedOrders.find(m => m.orderId === o.order_id);
+                    }).length})
                   </button>
                 )}
               </div>
 
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">주문번호</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">수취인</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">주소</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">송장번호</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">매칭 방법</th>
-                      <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">개별 처리</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {matchedOrders.map((match, index) => {
+              {/* 송장 할당된 주문 목록 */}
+              {activeTab === 'matched' && (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">주문번호</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">수취인</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">주소</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">송장번호</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">매칭 방법</th>
+                        <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">개별 처리</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {matchedOrders.map((match, index) => {
                       const orderKey = `${match.orderId}-${match.trackingNo}`;
                       const status = processingStatus[orderKey];
                       
@@ -1687,68 +1819,117 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
                           </td>
                         </tr>
                       );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* 매칭 실패 목록 */}
-              {failedMatches.length > 0 && (
-                <div className="mt-6">
-                  <h4 className="font-semibold text-gray-900 mb-3">
-                    매칭 실패 목록 
-                    <span className="text-sm font-normal text-gray-600 ml-2">
-                      (주문번호를 직접 입력하여 수동 매칭 가능)
-                    </span>
-                  </h4>
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-red-50">
-                        <tr>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">행</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">송장번호</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">수취인명</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">주소</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">실패 사유</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">수동 매칭</th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                        {failedMatches.map((fail, index) => (
-                          <tr key={index} className="bg-red-50">
-                            <td className="px-4 py-2 text-sm text-gray-900">{fail.row}</td>
-                            <td className="px-4 py-2 text-sm font-mono text-gray-600">{fail.trackingNo}</td>
-                            <td className="px-4 py-2 text-sm text-gray-900">{fail.shipmentName}</td>
-                            <td className="px-4 py-2 text-sm text-gray-600 text-xs">{fail.shipmentAddress}</td>
-                            <td className="px-4 py-2 text-sm text-red-600">{fail.reason || fail.matchMethod}</td>
-                            <td className="px-4 py-2">
-                              <input
-                                type="text"
-                                placeholder="주문번호 입력"
-                                className="w-32 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                onBlur={(e) => handleManualMatch(fail.trackingNo, e.target.value)}
-                                onKeyPress={(e) => {
-                                  if (e.key === 'Enter') {
-                                    handleManualMatch(fail.trackingNo, (e.target as HTMLInputElement).value);
-                                  }
-                                }}
-                              />
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="mt-3 text-sm text-gray-600">
-                    <p className="mt-1">입력 후 Enter 키를 누르거나 다른 곳을 클릭하면 매칭됩니다.</p>
-                  </div>
+                      })}
+                    </tbody>
+                  </table>
+                  
+                  {/* 일괄처리 버튼 및 진행 상태 */}
+                  {matchedOrders.length > 0 && (
+                    <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          {isProcessing ? (
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-3">
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                                <span className="text-sm font-medium">
+                                  처리 중... {Object.values(processingStatus).filter(s => s.status === 'success').length + 1}/{matchedOrders.length}
+                                </span>
+                              </div>
+                              <div className="w-full bg-gray-200 rounded-full h-2">
+                                <div 
+                                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                                  style={{ width: `${(Object.values(processingStatus).filter(s => s.status === 'success').length / matchedOrders.length) * 100}%` }}
+                                />
+                              </div>
+                              <div className="flex gap-4 text-xs text-gray-600">
+                                <span>성공: {Object.values(processingStatus).filter(s => s.status === 'success').length}</span>
+                                <span>실패: {Object.values(processingStatus).filter(s => s.status === 'failed').length}</span>
+                                <span>대기: {matchedOrders.length - Object.keys(processingStatus).length}</span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="text-sm text-gray-600">
+                              {Object.keys(processingStatus).length > 0 ? (
+                                <div className="flex gap-4">
+                                  <span className="text-green-600">완료: {Object.values(processingStatus).filter(s => s.status === 'success').length}건</span>
+                                  {Object.values(processingStatus).filter(s => s.status === 'failed').length > 0 && (
+                                    <span className="text-red-600">실패: {Object.values(processingStatus).filter(s => s.status === 'failed').length}건</span>
+                                  )}
+                                </div>
+                              ) : (
+                                <span>{matchedOrders.length}개 주문을 일괄 처리할 수 있습니다.</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          onClick={handleBatchProcess}
+                          disabled={isProcessing || Object.keys(processingStatus).length === matchedOrders.length}
+                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {isProcessing ? '처리 중...' : 
+                           Object.keys(processingStatus).length === matchedOrders.length ? '처리 완료' : 
+                           '일괄 처리'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
-              {matchedOrders.length === 0 && failedMatches.length === 0 && (
+              {/* 송장 미할당 주문 목록 */}
+              {activeTab === 'unmatched' && (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">주문번호</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">주문일시</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">수취인</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">전화번호</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">주소</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">상태</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {orders.filter(order => {
+                        const method = (order.shipping_method?.toLowerCase() || '') + (order.shipping_type?.toLowerCase() || '');
+                        const isDelivery = !['직접', '방문', '화물', 'pickup', 'direct', 'cargo', 'freight'].some(m => method.includes(m));
+                        return isDelivery && !matchedOrders.find(m => m.orderId === order.order_id);
+                      }).map((order, index) => (
+                        <tr key={index} className="hover:bg-gray-50">
+                          <td className="px-4 py-2 text-sm text-gray-900">{order.order_id}</td>
+                          <td className="px-4 py-2 text-sm text-gray-600">{order.order_date}</td>
+                          <td className="px-4 py-2 text-sm text-gray-900">{order.receiver_name}</td>
+                          <td className="px-4 py-2 text-sm text-gray-600">{order.receiver_phone}</td>
+                          <td className="px-4 py-2 text-sm text-gray-600 text-xs">{order.receiver_address}</td>
+                          <td className="px-4 py-2 text-sm">
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                              송장 대기
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {orders.filter(order => {
+                    const method = (order.shipping_method?.toLowerCase() || '') + (order.shipping_type?.toLowerCase() || '');
+                    const isDelivery = !['직접', '방문', '화물', 'pickup', 'direct', 'cargo', 'freight'].some(m => method.includes(m));
+                    return isDelivery && !matchedOrders.find(m => m.orderId === order.order_id);
+                  }).length === 0 && (
+                    <div className="text-center py-8">
+                      <p className="text-gray-500">모든 택배 주문에 송장이 할당되었습니다.</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeTab === 'matched' && matchedOrders.length === 0 && (
                 <div className="text-center py-8">
                   <AlertCircle className="h-12 w-12 text-yellow-500 mx-auto mb-4" />
-                  <p className="text-gray-600">매칭된 주문이 없습니다.</p>
+                  <p className="text-gray-600">아직 송장이 할당된 주문이 없습니다.</p>
+                  <p className="text-sm text-gray-500 mt-2">엑셀 파일의 송장 정보와 주문 정보를 확인해주세요.</p>
                 </div>
               )}
             </div>
@@ -1789,42 +1970,6 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
             >
               닫기
             </button>
-            {currentStep === 'preview' && matchedOrders.length > 0 && (
-              <>
-                <button
-                  onClick={handleConfirmUpload}
-                  disabled={isProcessing}
-                  className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                  {isProcessing ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                      처리 중...
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="h-4 w-4" />
-                      전체 일괄 등록
-                    </>
-                  )}
-                </button>
-                
-                {/* 처리 상태 요약 */}
-                {Object.keys(processingStatus).length > 0 && (
-                  <div className="flex items-center gap-4 text-sm">
-                    <span className="text-green-600">
-                      ✅ 완료: {Object.values(processingStatus).filter(s => s.status === 'success').length}
-                    </span>
-                    <span className="text-red-600">
-                      ❌ 실패: {Object.values(processingStatus).filter(s => s.status === 'failed').length}
-                    </span>
-                    <span className="text-gray-600">
-                      대기: {matchedOrders.length - Object.keys(processingStatus).length}
-                    </span>
-                  </div>
-                )}
-              </>
-            )}
           </div>
         </div>
       </div>
