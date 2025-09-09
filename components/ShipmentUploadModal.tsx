@@ -386,13 +386,37 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
     const matchingLog: any[] = [];
     const matchedOrderIds = new Set<string>(); // 이미 매칭된 주문번호 추적
     
+    // 택배가 아닌 주문 필터링 (직접수령, 방문수령, 화물 등)
+    const deliveryOrders = orders.filter(order => {
+      // shipping_method 또는 shipping_type 필드 확인
+      const shippingMethod = order.shipping_method?.toLowerCase() || '';
+      const shippingType = order.shipping_type?.toLowerCase() || '';
+      
+      // 제외할 배송 방식
+      const excludedMethods = ['직접', '방문', '화물', 'pickup', 'direct', 'cargo', 'freight'];
+      const isExcluded = excludedMethods.some(method => 
+        shippingMethod.includes(method) || shippingType.includes(method)
+      );
+      
+      if (isExcluded) {
+        console.log(`🚫 택배 제외 주문: ${order.order_id} (${shippingMethod || shippingType})`);
+      }
+      
+      return !isExcluded;
+    });
+    
+    const excludedOrdersCount = orders.length - deliveryOrders.length;
+    if (excludedOrdersCount > 0) {
+      console.log(`📦 배송 방식 필터링: 전체 ${orders.length}건 중 택배 ${deliveryOrders.length}건 (제외: ${excludedOrdersCount}건)`);
+    }
+    
     // 동일 수령자의 분할 주문 처리를 위한 맵
     const customerOrdersMap = new Map<string, string[]>(); // 정규화된 이름 -> 주문ID 배열
     const customerShipmentsMap = new Map<string, ShipmentData[]>(); // 정규화된 이름 -> 송장 배열
     const customerOrderIndex = new Map<string, number>(); // 라운드 로빈을 위한 인덱스
     
-    // 주문을 고객별로 그룹화
-    orders.forEach(order => {
+    // 택배 주문만 고객별로 그룹화
+    deliveryOrders.forEach(order => {
       const normalizedName = normalizeName(order.receiver_name);
       const enhancedName = normalizeNameEnhanced(order.receiver_name);
       const companyName = normalizeCompanyName(order.receiver_name);
@@ -428,8 +452,8 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
       });
     });
     
-    // 디버깅: 주문 데이터 샘플 출력
-    console.log('주문 데이터 샘플 (처음 3개):', orders.slice(0, 3).map(order => ({
+    // 디버깅: 택배 주문 데이터 샘플 출력
+    console.log('택배 주문 샘플 (처음 3개):', deliveryOrders.slice(0, 3).map(order => ({
       order_id: order.order_id,
       receiver_name: order.receiver_name,
       receiver_phone: order.receiver_phone,
@@ -500,7 +524,7 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
       // ===== 기존 로직으로 먼저 시도 =====
       // 1순위: 수하인명 매칭 (기존 정규화 + 비식별 처리 지원)
       
-      const nameMatchOrders = orders.filter(order => {
+      const nameMatchOrders = deliveryOrders.filter(order => {
         // 이미 매칭된 주문은 제외
         if (matchedOrderIds.has(order.order_id)) return false;
         
@@ -659,7 +683,7 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
       
       // 2순위: 전화번호 매칭 (1순위에서 매칭 실패 시)
       if (!matchFound && normalizedShipmentPhone) {
-        const phoneMatchOrders = orders.filter(order => {
+        const phoneMatchOrders = deliveryOrders.filter(order => {
           // 이미 매칭된 주문은 제외
           if (matchedOrderIds.has(order.order_id)) return false;
           const normalizedOrderPhone = normalizePhone(order.receiver_phone);
@@ -702,7 +726,7 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
       
       // 3순위: 주소 매칭 (1,2순위에서 매칭 실패 시) - 이름 무관
       if (!matchFound && normalizedShipmentAddress) {
-        const addressMatchOrders = orders.filter(order => {
+        const addressMatchOrders = deliveryOrders.filter(order => {
           // 이미 매칭된 주문은 제외
           if (matchedOrderIds.has(order.order_id)) return false;
           const normalizedOrderAddress = normalizeAddress(order.receiver_address);
@@ -825,7 +849,7 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
         const companyShipmentName = normalizeCompanyName(shipment.receiverName);
         
         // 개선된 이름 매칭 (비식별 처리 포함)
-        const enhancedNameMatches = orders.filter(order => {
+        const enhancedNameMatches = deliveryOrders.filter(order => {
           if (matchedOrderIds.has(order.order_id)) return false;
           
           const enhancedOrderName = normalizeNameEnhanced(order.receiver_name);
@@ -911,7 +935,7 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
         if (!matchFound) {
           const baseShipmentAddr = extractBaseAddress(shipment.receiverAddress);
           if (baseShipmentAddr && baseShipmentAddr.length > 10) { // 너무 짧은 주소는 제외
-            const baseAddressMatches = orders.filter(order => {
+            const baseAddressMatches = deliveryOrders.filter(order => {
               if (matchedOrderIds.has(order.order_id)) return false;
               const baseOrderAddr = extractBaseAddress(order.receiver_address);
               return baseShipmentAddr === baseOrderAddr;
@@ -1119,20 +1143,21 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
         body: JSON.stringify({
           tracking_no: cleanedTrackingNo,
           shipping_company_code: '0018', // 한진택배
-          status: 'standby' // 배송대기 상태로 먼저 등록
+          status: 'shipping' // 바로 배송중 상태로 등록 시도
         })
       });
 
       const registerResult = await registerResponse.json();
       
       if (registerResponse.ok) {
-        console.log('✅ 송장번호 등록 성공');
+        console.log('✅ 송장번호 등록 성공 (배송중 상태)');
         
         const shippingCode = registerResult.shipment?.shipping_code;
         
-        if (shippingCode) {
-          // Step 2: 배송중으로 상태 변경 (카페24 공식 API 사용)
-          console.log('🚚 배송중 상태 변경 시도...');
+        // 만약 배송중으로 직접 등록이 실패하면 2단계로 처리
+        if (shippingCode && registerResult.shipment?.status !== 'shipping') {
+          // Step 2: 배송중으로 상태 변경 필요
+          console.log('🚚 추가로 배송중 상태 변경 시도...');
           const statusUpdateResponse = await fetch(`/api/orders/${match.orderId}/shipments/${shippingCode}`, {
             method: 'PUT',
             headers: {
@@ -1254,7 +1279,7 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
             body: JSON.stringify({
               tracking_no: cleanedTrackingNo,
               shipping_company_code: '0018', // 한진택배
-              status: 'standby' // 배송대기 상태로 먼저 등록
+              status: 'shipping' // 바로 배송중 상태로 등록 시도
             })
           });
 
@@ -1267,10 +1292,21 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
             // shipping_code 추출
             const shippingCode = registerResult.shipment?.shipping_code;
             
-            if (shippingCode) {
+            // 배송중으로 직접 등록되었는지 확인
+            if (registerResult.shipment?.status === 'shipping') {
+              console.log('✅ 배송중 상태로 직접 등록 완료');
+              totalSuccess++;
+              succeeded.push({
+                orderId: match.orderId,
+                trackingNo: match.trackingNo,
+                receiverName: match.receiverName,
+                shippingCode: shippingCode
+              });
+            } else if (shippingCode) {
               console.log('🔑 Shipping Code:', shippingCode);
+              console.log('📍 현재 상태:', registerResult.shipment?.status);
               
-              // Step 2: 배송중으로 상태 변경 (카페24 공식 API 사용)
+              // Step 2: 배송중으로 상태 변경 (추가 API 호출 필요)
               console.log('🚚 [2/2] 배송중(shipping)으로 상태 변경 시작...');
               const statusUpdateResponse = await fetch(`/api/orders/${match.orderId}/shipments/${shippingCode}`, {
                 method: 'PUT',
@@ -1485,31 +1521,60 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
             <div>
               <div className="mb-4">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-semibold text-gray-900">매칭 결과</h3>
+                  <h3 className="font-semibold text-gray-900">카페24 주문 매칭 결과</h3>
                   <div className="flex gap-4 text-sm">
+                    <span className="text-blue-600 font-medium">
+                      📦 전체 주문: {orders.length}건
+                    </span>
+                    {orders.filter(o => {
+                      const method = (o.shipping_method?.toLowerCase() || '') + (o.shipping_type?.toLowerCase() || '');
+                      return ['직접', '방문', '화물', 'pickup', 'direct', 'cargo', 'freight'].some(m => method.includes(m));
+                    }).length > 0 && (
+                      <span className="text-gray-400">
+                        🚫 택배 제외: {orders.filter(o => {
+                          const method = (o.shipping_method?.toLowerCase() || '') + (o.shipping_type?.toLowerCase() || '');
+                          return ['직접', '방문', '화물', 'pickup', 'direct', 'cargo', 'freight'].some(m => method.includes(m));
+                        }).length}건
+                      </span>
+                    )}
                     <span className="text-green-600">
-                      ✅ 정확: {matchedOrders.filter(m => m.matchType === 'exact').length}
+                      ✅ 매칭 성공: {matchedOrders.length}건
                     </span>
-                    <span className="text-yellow-600">
-                      ⚠️ 부분: {partialMatches.length}
-                    </span>
-                    <span className="text-red-600">
-                      ❌ 실패: {failedMatches.length}
+                    <span className="text-gray-500">
+                      ⏳ 매칭 대기: {orders.filter(o => {
+                        const method = (o.shipping_method?.toLowerCase() || '') + (o.shipping_type?.toLowerCase() || '');
+                        const isDelivery = !['직접', '방문', '화물', 'pickup', 'direct', 'cargo', 'freight'].some(m => method.includes(m));
+                        return isDelivery;
+                      }).length - matchedOrders.length}건
                     </span>
                   </div>
                 </div>
                 
-                {/* 매칭 실패 경고 */}
-                {failedMatches.length > 0 && (
-                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                {/* 주문 기준 매칭 상태 표시 */}
+                {orders.length > matchedOrders.length && (
+                  <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                     <div className="flex items-start">
-                      <AlertCircle className="h-5 w-5 text-red-500 mt-0.5 mr-2" />
+                      <AlertCircle className="h-5 w-5 text-yellow-500 mt-0.5 mr-2" />
                       <div>
-                        <p className="text-sm font-medium text-red-800">
-                          {failedMatches.length}개 항목이 매칭되지 않았습니다
+                        <p className="text-sm font-medium text-yellow-800">
+                          {orders.length - matchedOrders.length}개 주문이 아직 송장 할당 대기 중입니다
                         </p>
-                        <p className="text-xs text-red-600 mt-1">
-                          수하인명과 주소가 정확한지 확인해주세요. 아래 실패 목록을 참고하세요.
+                        <p className="text-xs text-yellow-600 mt-1">
+                          엑셀 파일에 해당 주문의 송장 정보가 없거나 매칭 정보가 일치하지 않습니다.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {/* 모든 주문 매칭 성공 */}
+                {orders.length > 0 && orders.length === matchedOrders.length && (
+                  <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <div className="flex items-start">
+                      <CheckCircle className="h-5 w-5 text-green-500 mt-0.5 mr-2" />
+                      <div>
+                        <p className="text-sm font-medium text-green-800">
+                          모든 주문({orders.length}건)에 송장이 할당되었습니다!
                         </p>
                       </div>
                     </div>
@@ -1522,16 +1587,28 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
                 <button
                   className="px-4 py-2 border-b-2 border-blue-500 text-blue-600 font-medium"
                 >
-                  매칭 성공 ({matchedOrders.length})
+                  송장 할당된 주문 ({matchedOrders.length})
                 </button>
-                <button
-                  className="px-4 py-2 border-b-2 border-transparent text-gray-600 hover:text-gray-800"
-                  onClick={() => {
-                    // 실패 목록 표시 토글 (추후 구현)
-                  }}
-                >
-                  매칭 실패 ({failedMatches.length})
-                </button>
+                {orders.length > matchedOrders.length && (
+                  <button
+                    className="px-4 py-2 border-b-2 border-transparent text-gray-600 hover:text-gray-800"
+                    onClick={() => {
+                      // 미할당 주문 목록 표시 토글 (추후 구현)
+                    }}
+                  >
+                    송장 미할당 주문 ({orders.length - matchedOrders.length})
+                  </button>
+                )}
+                {failedMatches.filter(f => !f.skipped).length > 0 && (
+                  <button
+                    className="px-4 py-2 border-b-2 border-transparent text-gray-600 hover:text-gray-800"
+                    onClick={() => {
+                      // 매칭 실패 송장 목록 표시 토글
+                    }}
+                  >
+                    매칭 실패 송장 ({failedMatches.filter(f => !f.skipped).length})
+                  </button>
+                )}
               </div>
 
               <div className="overflow-x-auto">
@@ -1683,8 +1760,12 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
               <h3 className="text-lg font-semibold text-gray-900 mb-2">
                 송장 등록 완료
               </h3>
-              <p className="text-gray-600 mb-4">
-                성공: {matchedOrders.length - failedOrders.length}건 / 실패: {failedOrders.length}건
+              <p className="text-gray-600 mb-2">
+                카페24 주문 {orders.length}건 중
+              </p>
+              <p className="text-lg font-medium text-gray-900 mb-4">
+                ✅ 송장 등록 성공: {matchedOrders.length - failedOrders.length}건
+                {failedOrders.length > 0 && ` / ❌ 등록 실패: ${failedOrders.length}건`}
               </p>
               
               {failedOrders.length > 0 && (
