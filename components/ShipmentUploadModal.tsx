@@ -389,6 +389,7 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
     // 동일 수령자의 분할 주문 처리를 위한 맵
     const customerOrdersMap = new Map<string, string[]>(); // 정규화된 이름 -> 주문ID 배열
     const customerShipmentsMap = new Map<string, ShipmentData[]>(); // 정규화된 이름 -> 송장 배열
+    const customerOrderIndex = new Map<string, number>(); // 라운드 로빈을 위한 인덱스
     
     // 주문을 고객별로 그룹화
     orders.forEach(order => {
@@ -498,7 +499,9 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
       
       // ===== 기존 로직으로 먼저 시도 =====
       // 1순위: 수하인명 매칭 (기존 정규화 + 비식별 처리 지원)
+      
       const nameMatchOrders = orders.filter(order => {
+        // 이미 매칭된 주문은 제외
         if (matchedOrderIds.has(order.order_id)) return false;
         
         const normalizedOrderName = normalizeName(order.receiver_name);
@@ -549,20 +552,7 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
       if (nameMatchOrders.length === 1) {
         const orderId = nameMatchOrders[0].order_id;
         
-        // 이미 매칭된 주문인지 확인
-        if (matchedOrderIds.has(orderId)) {
-          matchingLog.push({
-            row: index + 1,
-            trackingNo: shipment.trackingNo,
-            shipmentName: shipment.receiverName,
-            matchedOrderId: orderId,
-            matchMethod: `동일 주문번호(${orderId})의 다른 상품`,
-            success: false,
-            reason: '이미 송장 할당됨 - 스킵'
-          });
-          return; // 다음 송장으로 건너뛰기
-        }
-        
+        // 이미 filter에서 매칭된 주문은 제외했으므로 중복 체크 불필요
         // 이름으로 유일하게 매칭됨
         matched.push({
           orderId: orderId,
@@ -587,7 +577,10 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
           success: true
         });
       } else if (nameMatchOrders.length > 1) {
-        // 이름이 여러 개 매칭되면 주소로 추가 필터링
+        // 복수 주문 처리: 각 주문에 하나씩만 할당
+        console.log(`🔄 복수 주문 감지 [${normalizedShipmentName}]: ${nameMatchOrders.length}개 주문`);
+        
+        // 먼저 주소로 필터링 시도
         const addressMatchOrders = nameMatchOrders.filter(order => {
           const normalizedOrderAddress = normalizeAddress(order.receiver_address);
           const isMatch = normalizedOrderAddress.includes(normalizedShipmentAddress) || 
@@ -605,49 +598,70 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
           return isMatch;
         });
         
-        if (addressMatchOrders.length === 1) {
-          const orderId = addressMatchOrders[0].order_id;
+        // 주소 매칭 결과에 따라 처리
+        const ordersToUse = addressMatchOrders.length > 0 ? addressMatchOrders : nameMatchOrders;
+        
+        if (ordersToUse.length > 0) {
+          // 이미 매칭된 주문들 필터링
+          const availableOrders = ordersToUse.filter(order => !matchedOrderIds.has(order.order_id));
           
-          // 이미 매칭된 주문인지 확인
-          if (matchedOrderIds.has(orderId)) {
+          if (availableOrders.length > 0) {
+            // 첫 번째 사용 가능한 주문 선택
+            const selectedOrder = availableOrders[0];
+            const orderId = selectedOrder.order_id;
+            
+            matched.push({
+              orderId: orderId,
+              receiverName: selectedOrder.receiver_name,
+              receiverAddress: selectedOrder.receiver_address,
+              trackingNo: shipment.trackingNo,
+              matchType: addressMatchOrders.length > 0 ? 'exact' : 'partial'
+            });
+            matchFound = true;
+            matchType = addressMatchOrders.length > 0 ? 'exact' : 'partial';
+            matchedOrderIds.add(orderId); // 사용된 주문 표시
+            
+            const methodDesc = addressMatchOrders.length > 0 
+              ? '1순위: 수하인명 + 주소 매칭' 
+              : `1순위: 수하인명 매칭 (복수 주문)`;
+            
             matchingLog.push({
               row: index + 1,
               trackingNo: shipment.trackingNo,
               shipmentName: shipment.receiverName,
               matchedOrderId: orderId,
-              matchMethod: '중복 주문 (이미 송장 할당됨)',
-              success: false,
-              reason: '동일 주문의 다른 상품'
+              matchedName: selectedOrder.receiver_name,
+              matchMethod: methodDesc,
+              success: true,
+              note: `${ordersToUse.length}개 주문 중 선택`
             });
-            return;
+          } else {
+            // 모든 주문이 이미 매칭됨 - 송장이 주문보다 많은 경우 (정상 - 스킵)
+            console.log(`🔸 잉여 송장 스킵 [${index + 1}번째]: ${shipment.trackingNo} (${shipment.receiverName})`);
+            console.log(`   → 주문 ${ordersToUse.length}개 모두 할당 완료, 남은 송장은 무시`);
+            
+            matchingLog.push({
+              row: index + 1,
+              trackingNo: shipment.trackingNo,
+              shipmentName: shipment.receiverName,
+              matchMethod: '잉여 송장 (스킵)',
+              success: true,  // 실패가 아님
+              skipped: true,  // UI에서 표시하지 않기 위한 플래그
+              reason: '모든 주문이 이미 송장 할당됨',
+              note: `주문 ${ordersToUse.length}개 모두 할당 완료`
+            });
+            // 잉여 송장은 매칭 목록에 추가하지 않음 (UI에 표시 안 함)
+            // 하지만 실패로 처리하지도 않음
+            return; // 다음 송장으로 넘어감
           }
-          
-          matched.push({
-            orderId: orderId,
-            receiverName: addressMatchOrders[0].receiver_name,
-            receiverAddress: addressMatchOrders[0].receiver_address,
-            trackingNo: shipment.trackingNo,
-            matchType: 'exact'
-          });
-          matchFound = true;
-          matchType = 'exact';
-          matchedOrderIds.add(orderId);
-          
-          matchingLog.push({
-            row: index + 1,
-            trackingNo: shipment.trackingNo,
-            shipmentName: shipment.receiverName,
-            matchedOrderId: orderId,
-            matchedName: addressMatchOrders[0].receiver_name,
-            matchMethod: '1순위: 수하인명 + 주소 매칭',
-            success: true
-          });
         }
       }
       
       // 2순위: 전화번호 매칭 (1순위에서 매칭 실패 시)
       if (!matchFound && normalizedShipmentPhone) {
         const phoneMatchOrders = orders.filter(order => {
+          // 이미 매칭된 주문은 제외
+          if (matchedOrderIds.has(order.order_id)) return false;
           const normalizedOrderPhone = normalizePhone(order.receiver_phone);
           return normalizedOrderPhone === normalizedShipmentPhone;
         });
@@ -659,19 +673,7 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
         if (phoneMatchOrders.length === 1) {
           const orderId = phoneMatchOrders[0].order_id;
           
-          // 이미 매칭된 주문인지 확인
-          if (matchedOrderIds.has(orderId)) {
-            matchingLog.push({
-              row: index + 1,
-              trackingNo: shipment.trackingNo,
-              shipmentName: shipment.receiverName,
-              matchedOrderId: orderId,
-              matchMethod: '중복 주문 (이미 송장 할당됨)',
-              success: false,
-              reason: '동일 주문의 다른 상품'
-            });
-            return;
-          }
+          // 이미 filter에서 매칭된 주문은 제외했으므로 중복 체크 불필요
           
           matched.push({
             orderId: orderId,
@@ -701,6 +703,8 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
       // 3순위: 주소 매칭 (1,2순위에서 매칭 실패 시) - 이름 무관
       if (!matchFound && normalizedShipmentAddress) {
         const addressMatchOrders = orders.filter(order => {
+          // 이미 매칭된 주문은 제외
+          if (matchedOrderIds.has(order.order_id)) return false;
           const normalizedOrderAddress = normalizeAddress(order.receiver_address);
           
           // 주소가 너무 짧은 경우 스킵 (5자 미만으로 조정)
@@ -782,19 +786,7 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
         if (addressMatchOrders.length === 1) {
           const orderId = addressMatchOrders[0].order_id;
           
-          // 이미 매칭된 주문인지 확인
-          if (matchedOrderIds.has(orderId)) {
-            matchingLog.push({
-              row: index + 1,
-              trackingNo: shipment.trackingNo,
-              shipmentName: shipment.receiverName,
-              matchedOrderId: orderId,
-              matchMethod: '중복 주문 (이미 송장 할당됨)',
-              success: false,
-              reason: '동일 주문의 다른 상품'
-            });
-            return;
-          }
+          // 이미 filter에서 매칭된 주문은 제외했으므로 중복 체크 불필요
           
           matched.push({
             orderId: orderId,
@@ -1001,11 +993,12 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
     // 매칭 결과 분류
     const exactMatches = matched.filter(m => m.matchType === 'exact');
     const partialMatchList = matched.filter(m => m.matchType === 'partial');
-    const failedMatchList = matchingLog.filter(log => !log.success);
+    const failedMatchList = matchingLog.filter(log => !log.success && !log.skipped); // 잉여 송장은 실패 목록에서 제외
+    const skippedList = matchingLog.filter(log => log.skipped); // 잉여 송장 목록
     
     // 개선된 매칭 통계
-    const improvedMatches = matchingLog.filter(log => log.success && log.matchMethod?.includes('개선'));
-    const legacyMatches = matchingLog.filter(log => log.success && !log.matchMethod?.includes('개선'));
+    const improvedMatches = matchingLog.filter(log => log.success && !log.skipped && log.matchMethod?.includes('개선'));
+    const legacyMatches = matchingLog.filter(log => log.success && !log.skipped && !log.matchMethod?.includes('개선'));
     
     // 디버깅 로그 출력
     console.group('📦 송장 매칭 결과 (개선된 버전)');
@@ -1013,6 +1006,9 @@ export default function ShipmentUploadModal({ isOpen, onClose, orders, onUploadC
     console.log(`✅ 정확 매칭: ${exactMatches.length}개`);
     console.log(`⚠️ 부분 매칭: ${partialMatchList.length}개`);
     console.log(`❌ 매칭 실패: ${failedMatchList.length}개`);
+    if (skippedList.length > 0) {
+      console.log(`🔸 잉여 송장 (스킵): ${skippedList.length}개`);
+    }
     console.log('---');
     console.log(`🔄 기존 로직 매칭: ${legacyMatches.length}개`);
     console.log(`✨ 개선 로직 매칭: ${improvedMatches.length}개 (추가 매칭)`);
