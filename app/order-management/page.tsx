@@ -871,13 +871,16 @@ export default function OrderManagement() {
         });
 
         const data = await response.json();
-        
+
+        // 응답 전체 로깅 (디버깅용)
+        console.log(`송장번호 ${trackingNo} API 응답:`, JSON.stringify(data, null, 2));
+
         // 응답 확인
         if (!data?.data?.track) {
           console.warn(`송장번호 ${trackingNo} 조회 결과 없음`);
           return { success: false, trackingNo, error: 'No tracking data' };
         }
-        
+
         const statusCode = data.data.track.lastEvent?.status?.code || 'IN_TRANSIT';
         console.log(`송장번호 ${trackingNo} 상태: ${statusCode}`);
         
