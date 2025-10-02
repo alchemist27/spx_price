@@ -848,29 +848,24 @@ export default function OrderManagement() {
     // 배치 처리를 위한 함수
     const fetchTrackingStatus = async (trackingNo: string) => {
       try {
-        const response = await fetch("https://apis.tracker.delivery/graphql", {
+        const response = await fetch("/api/tracking", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": "TRACKQL-API-KEY AAA2d6JxdvsH4yRvFhFCG8Rak:DEobyYSm2z270msFC58ImWGxS73O6Yy0CnoDz7qnri4",
           },
           body: JSON.stringify({
-            query: `query Track($carrierId: ID!, $trackingNumber: String!) {
-              track(carrierId: $carrierId, trackingNumber: $trackingNumber) {
-                lastEvent { 
-                  time
-                  status { code }
-                }
-              }
-            }`,
-            variables: {
-              carrierId: "kr.hanjin",
-              trackingNumber: trackingNo
-            },
+            trackingNumber: trackingNo,
+            carrierId: "kr.hanjin"
           }),
         });
 
         const data = await response.json();
+
+        // 에러 처리
+        if (data.error) {
+          console.error(`송장번호 ${trackingNo} 조회 오류:`, data.error);
+          return { success: false, trackingNo, error: data.error };
+        }
 
         // 응답 전체 로깅 (디버깅용)
         console.log(`송장번호 ${trackingNo} API 응답:`, JSON.stringify(data, null, 2));
