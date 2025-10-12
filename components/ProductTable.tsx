@@ -110,10 +110,26 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
     }
   }, [products, activeTab]);
 
+  // 제외된 상품 통계 계산
+  const excludedStats = useMemo(() => {
+    const saleProducts = tabFilteredProducts.filter(p => p.product_name.includes('[SALE]'));
+    const sampleProducts = tabFilteredProducts.filter(p => p.product_name.includes('[SAMPLE]'));
+    return {
+      sale: saleProducts.length,
+      sample: sampleProducts.length,
+      total: saleProducts.length + sampleProducts.length
+    };
+  }, [tabFilteredProducts]);
+
   // 검색 적용 (표시/판매 필터 제거)
   const filteredProducts = useMemo(() => {
     return tabFilteredProducts.filter(product => {
-      const matchesSearch = 
+      // [SALE] 또는 [SAMPLE] 태그가 포함된 상품 제외
+      if (product.product_name.includes('[SALE]') || product.product_name.includes('[SAMPLE]')) {
+        return false;
+      }
+
+      const matchesSearch =
         product.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         product.product_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
         product.model_name.toLowerCase().includes(searchTerm.toLowerCase());
@@ -764,15 +780,23 @@ export default function ProductTable({ products, onProductsUpdate }: ProductTabl
       <div className="px-6 py-4 border-b border-gray-200">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           {/* Search */}
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-            <input
-              type="text"
-              placeholder="상품명, 상품코드, 모델명으로 검색..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="input-field pl-10"
-            />
+          <div className="flex-1 max-w-md">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+              <input
+                type="text"
+                placeholder="상품명, 상품코드, 모델명으로 검색..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="input-field pl-10"
+              />
+            </div>
+            {/* 제외된 상품 안내 */}
+            {excludedStats.total > 0 && (
+              <div className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                <span className="font-medium">제외된 상품:</span> [SALE] {excludedStats.sale}개, [SAMPLE] {excludedStats.sample}개
+              </div>
+            )}
           </div>
 
           {/* Action Buttons */}
