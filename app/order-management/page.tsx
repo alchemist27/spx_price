@@ -903,30 +903,64 @@ export default function OrderManagement() {
     };
 
     try {
-      // 배치 처리 (2개씩 병렬, 안정성 향상)
-      const BATCH_SIZE = 2;
-      for (let i = 0; i < toFetch.length; i += BATCH_SIZE) {
-        const batch = toFetch.slice(i, i + BATCH_SIZE);
-        
-        // 배치 내 병렬 처리
-        const promises = batch.map(trackingNo => fetchTrackingStatus(trackingNo));
-        const results = await Promise.all(promises);
-        
-        // 결과 확인
-        for (const result of results) {
+      // 50건씩 자동 분할 처리 (Rate Limit 대응)
+      const SPLIT_SIZE = 50; // 50건씩 분할
+      const BATCH_SIZE = 1; // 1개씩 순차 처리 (초당 10개 제한 대응)
+      const DELAY_MS = 150; // 150ms 딜레이 (안전하게 초당 6-7개)
+
+      // 50건씩 분할
+      const splits = [];
+      for (let i = 0; i < toFetch.length; i += SPLIT_SIZE) {
+        splits.push(toFetch.slice(i, i + SPLIT_SIZE));
+      }
+
+      console.log(`총 ${toFetch.length}건을 ${splits.length}개 그룹으로 분할 처리 (각 ${SPLIT_SIZE}건씩)`);
+
+      // 각 분할 그룹을 순차 처리
+      for (let splitIdx = 0; splitIdx < splits.length; splitIdx++) {
+        const currentSplit = splits[splitIdx];
+        console.log(`\n[그룹 ${splitIdx + 1}/${splits.length}] ${currentSplit.length}건 처리 시작...`);
+
+        // 그룹 내에서 1개씩 순차 처리
+        for (let i = 0; i < currentSplit.length; i++) {
+          // 중단 플래그 확인
+          if (abortShipmentLoading) {
+            console.log('배송 상태 조회 중단됨');
+            toast('배송 상태 조회가 중단되었습니다.', { icon: '⚠️' });
+            return;
+          }
+
+          const trackingNo = currentSplit[i];
+
+          const result = await fetchTrackingStatus(trackingNo);
+
+          // 결과 확인
           if (result.success) {
             console.log(`조회 성공: ${result.trackingNo} - ${result.status}`);
           }
+
+          checkedCount++;
+          setDeliveryCheckProgress({ current: checkedCount, total: totalToCheck });
+
+          // 다음 요청 전 딜레이 (마지막 항목 제외)
+          if (i < currentSplit.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, DELAY_MS));
+          }
         }
-        
-        checkedCount += batch.length;
-        setDeliveryCheckProgress({ current: checkedCount, total: totalToCheck });
-        
-        // 다음 배치 전 충분한 딜레이 (200ms)
-        if (i + BATCH_SIZE < toFetch.length) {
-          await new Promise(resolve => setTimeout(resolve, 200));
+
+        // 다음 그룹으로 넘어가기 전 안내 및 딜레이
+        if (splitIdx < splits.length - 1) {
+          console.log(`[그룹 ${splitIdx + 1}/${splits.length}] 완료. 다음 그룹 처리 전 대기...`);
+          toast(`그룹 ${splitIdx + 1}/${splits.length} 완료 (${checkedCount}/${totalToCheck}건)`, {
+            icon: '⏳',
+            duration: 2000
+          });
+          await new Promise(resolve => setTimeout(resolve, 1000)); // 그룹 간 1초 대기
         }
       }
+
+      console.log(`\n모든 그룹 처리 완료: 총 ${checkedCount}건 조회`);
+      toast.success(`모든 배송상태 조회 완료!`, { duration: 3000 });
 
       setDeliveryStatuses(newStatuses);
       
