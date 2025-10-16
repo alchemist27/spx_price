@@ -83,7 +83,6 @@ export default function OrderManagement() {
   const [shipmentCache, setShipmentCache] = useState<Map<string, {data: ShipmentInfo[], timestamp: number}>>(new Map());
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [deliveryStatuses, setDeliveryStatuses] = useState<Map<string, string>>(new Map());
-  const [deliveryStatusCache, setDeliveryStatusCache] = useState<Map<string, {status: string, timestamp: number}>>(new Map());
   const [isCheckingDeliveryStatus, setIsCheckingDeliveryStatus] = useState(false);
   const [deliveryCheckProgress, setDeliveryCheckProgress] = useState({ current: 0, total: 0 });
   const [isProcessingDelivered, setIsProcessingDelivered] = useState(false);
@@ -795,7 +794,6 @@ export default function OrderManagement() {
     const newStatuses = new Map(deliveryStatuses);
     let checkedCount = 0;
     let deliveredCount = 0;
-    let skippedFromCache = 0;
     
     // 조회할 송장번호 수집 (중복 제거)
     const trackingToCheck = new Map<string, string[]>(); // tracking_no -> order_ids[]
@@ -817,33 +815,12 @@ export default function OrderManagement() {
     
     const totalToCheck = trackingToCheck.size;
     setDeliveryCheckProgress({ current: 0, total: totalToCheck });
-    
-    // 캐시 확인 및 분리
+
+    // 모든 송장번호를 API로 조회 (캐시 제거)
     const trackingNumbers = Array.from(trackingToCheck.keys());
-    const toFetch: string[] = [];
-    const CACHE_DURATION = 5 * 60 * 1000; // 5분 캐시
-    const now = Date.now();
-    
-    for (const trackingNo of trackingNumbers) {
-      const cached = deliveryStatusCache.get(trackingNo);
-      if (cached && (now - cached.timestamp) < CACHE_DURATION) {
-        // 캐시에서 가져오기
-        const orderIds = trackingToCheck.get(trackingNo) || [];
-        for (const orderId of orderIds) {
-          newStatuses.set(orderId, cached.status);
-          if (cached.status === 'DELIVERED') {
-            deliveredCount++;
-          }
-        }
-        skippedFromCache++;
-        checkedCount++;
-        setDeliveryCheckProgress({ current: checkedCount, total: totalToCheck });
-      } else {
-        toFetch.push(trackingNo);
-      }
-    }
-    
-    console.log(`배송 조회: 총 ${totalToCheck}건, 캐시 사용 ${skippedFromCache}건, API 호출 필요 ${toFetch.length}건`);
+    const toFetch: string[] = trackingNumbers;
+
+    console.log(`배송 조회: 총 ${totalToCheck}건, 모두 API로 조회`);
 
     // 배치 처리를 위한 함수
     const fetchTrackingStatus = async (trackingNo: string) => {
@@ -878,14 +855,7 @@ export default function OrderManagement() {
 
         const statusCode = data.data.track.lastEvent?.status?.code || 'IN_TRANSIT';
         console.log(`송장번호 ${trackingNo} 상태: ${statusCode}`);
-        
-        // 캐시 저장
-        setDeliveryStatusCache(prev => {
-          const newCache = new Map(prev);
-          newCache.set(trackingNo, { status: statusCode, timestamp: Date.now() });
-          return newCache;
-        });
-        
+
         // 해당 송장번호를 가진 모든 주문 업데이트
         const orderIds = trackingToCheck.get(trackingNo) || [];
         for (const orderId of orderIds) {
@@ -905,8 +875,7 @@ export default function OrderManagement() {
     try {
       // 50건씩 자동 분할 처리 (Rate Limit 대응)
       const SPLIT_SIZE = 50; // 50건씩 분할
-      const BATCH_SIZE = 1; // 1개씩 순차 처리 (초당 10개 제한 대응)
-      const DELAY_MS = 150; // 150ms 딜레이 (안전하게 초당 6-7개)
+      const DELAY_MS = 150; // 150ms 딜레이 (초당 6-7개, 안전하게 Rate Limit 준수)
 
       // 50건씩 분할
       const splits = [];
