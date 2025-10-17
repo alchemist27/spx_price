@@ -795,14 +795,30 @@ export default function OrderManagement() {
     let checkedCount = 0;
     let deliveredCount = 0;
     
-    // 조회할 송장번호 수집 (중복 제거)
+    // 송장번호 유효성 검증 함수
+    const isValidTrackingNumber = (trackingNo: string): boolean => {
+      if (!trackingNo || trackingNo.trim() === '') return false;
+      // 숫자로만 구성되어 있고, 최소 10자리 이상인 경우만 유효
+      const numericRegex = /^\d{10,}$/;
+      return numericRegex.test(trackingNo.trim());
+    };
+
+    // 조회할 송장번호 수집 (중복 제거 및 유효성 검증)
     const trackingToCheck = new Map<string, string[]>(); // tracking_no -> order_ids[]
     const orderTrackingMap = new Map<string, string>(); // order_id -> tracking_no
-    
+    let skippedInvalid = 0;
+
     for (const order of orders) {
       if (order.shipments && order.shipments.length > 0) {
         for (const shipment of order.shipments) {
           if (shipment.tracking_no) {
+            // 송장번호 유효성 검증
+            if (!isValidTrackingNumber(shipment.tracking_no)) {
+              console.warn(`송장번호 유효하지 않음 (주문 ${order.order_id}): "${shipment.tracking_no}" - 조회 건너뜀`);
+              skippedInvalid++;
+              continue;
+            }
+
             if (!trackingToCheck.has(shipment.tracking_no)) {
               trackingToCheck.set(shipment.tracking_no, []);
             }
@@ -811,6 +827,10 @@ export default function OrderManagement() {
           }
         }
       }
+    }
+
+    if (skippedInvalid > 0) {
+      console.log(`${skippedInvalid}건의 유효하지 않은 송장번호 건너뜀`);
     }
     
     const totalToCheck = trackingToCheck.size;
@@ -836,20 +856,30 @@ export default function OrderManagement() {
           }),
         });
 
-        const data = await response.json();
+        // HTTP 에러 처리 (500, 400 등)
+        if (!response.ok) {
+          console.warn(`송장번호 ${trackingNo} API 오류 (${response.status}) - 건너뜀`);
+          return { success: false, trackingNo, error: `HTTP ${response.status}` };
+        }
 
-        // 에러 처리
+        let data;
+        try {
+          data = await response.json();
+        } catch (parseError) {
+          // JSON 파싱 에러 (500 에러로 HTML 응답이 왔을 때)
+          console.warn(`송장번호 ${trackingNo} 응답 파싱 실패 - 건너뜀`);
+          return { success: false, trackingNo, error: 'Parse error' };
+        }
+
+        // API에서 반환한 에러 메시지 처리
         if (data.error) {
-          console.error(`송장번호 ${trackingNo} 조회 오류:`, data.error);
+          console.warn(`송장번호 ${trackingNo} 조회 오류: ${data.error} - 건너뜀`);
           return { success: false, trackingNo, error: data.error };
         }
 
-        // 응답 전체 로깅 (디버깅용)
-        console.log(`송장번호 ${trackingNo} API 응답:`, JSON.stringify(data, null, 2));
-
         // 응답 확인
         if (!data?.data?.track) {
-          console.warn(`송장번호 ${trackingNo} 조회 결과 없음`);
+          console.warn(`송장번호 ${trackingNo} 조회 결과 없음 - 건너뜀`);
           return { success: false, trackingNo, error: 'No tracking data' };
         }
 
@@ -864,10 +894,11 @@ export default function OrderManagement() {
             deliveredCount++;
           }
         }
-        
+
         return { success: true, trackingNo, status: statusCode };
       } catch (error) {
-        console.error(`송장번호 ${trackingNo} 조회 실패:`, error);
+        // 네트워크 에러 등
+        console.warn(`송장번호 ${trackingNo} 조회 실패 - 건너뜀:`, error);
         return { success: false, trackingNo, error };
       }
     };
@@ -886,6 +917,8 @@ export default function OrderManagement() {
       console.log(`총 ${toFetch.length}건을 ${splits.length}개 그룹으로 분할 처리 (각 ${SPLIT_SIZE}건씩)`);
 
       // 각 분할 그룹을 순차 처리
+      let processedCount = 0; // 처리한 전체 개수 (성공/실패 무관)
+
       for (let splitIdx = 0; splitIdx < splits.length; splitIdx++) {
         const currentSplit = splits[splitIdx];
         console.log(`\n[그룹 ${splitIdx + 1}/${splits.length}] ${currentSplit.length}건 처리 시작...`);
@@ -903,13 +936,15 @@ export default function OrderManagement() {
 
           const result = await fetchTrackingStatus(trackingNo);
 
-          // 결과 확인
+          // 성공한 경우만 카운트
           if (result.success) {
             console.log(`조회 성공: ${result.trackingNo} - ${result.status}`);
+            checkedCount++;
           }
 
-          checkedCount++;
-          setDeliveryCheckProgress({ current: checkedCount, total: totalToCheck });
+          // 진행률은 전체 대비 처리한 개수로 표시
+          processedCount++;
+          setDeliveryCheckProgress({ current: processedCount, total: totalToCheck });
 
           // 다음 요청 전 딜레이 (마지막 항목 제외)
           if (i < currentSplit.length - 1) {
@@ -920,7 +955,7 @@ export default function OrderManagement() {
         // 다음 그룹으로 넘어가기 전 안내 및 딜레이
         if (splitIdx < splits.length - 1) {
           console.log(`[그룹 ${splitIdx + 1}/${splits.length}] 완료. 다음 그룹 처리 전 대기...`);
-          toast(`그룹 ${splitIdx + 1}/${splits.length} 완료 (${checkedCount}/${totalToCheck}건)`, {
+          toast(`그룹 ${splitIdx + 1}/${splits.length} 완료 (${processedCount}/${totalToCheck}건 처리)`, {
             icon: '⏳',
             duration: 2000
           });
@@ -928,8 +963,8 @@ export default function OrderManagement() {
         }
       }
 
-      console.log(`\n모든 그룹 처리 완료: 총 ${checkedCount}건 조회`);
-      toast.success(`모든 배송상태 조회 완료!`, { duration: 3000 });
+      console.log(`\n모든 그룹 처리 완료: 총 ${processedCount}건 처리, ${checkedCount}건 조회 성공`);
+      toast.success(`모든 배송상태 조회 완료! (${checkedCount}건 성공)`, { duration: 3000 });
 
       setDeliveryStatuses(newStatuses);
       
@@ -942,8 +977,7 @@ export default function OrderManagement() {
       });
       
       if (checkedCount > 0) {
-        toast.success(`${checkedCount}개 주문 배송상태 조회 완료 (배송완료: ${finalDeliveredCount}개)`);
-        console.log(`조회 완료: 총 ${checkedCount}건, 배송완료 ${finalDeliveredCount}건`);
+        console.log(`조회 완료: 총 ${processedCount}건 처리, ${checkedCount}건 성공, 배송완료 ${finalDeliveredCount}건`);
         
         // 자동처리 옵션이 켜져있고 배송완료된 주문이 있으면 자동으로 처리
         if (autoProcess && finalDeliveredCount > 0) {
@@ -1007,7 +1041,11 @@ export default function OrderManagement() {
           }
         }
       } else {
-        toast('조회 가능한 송장번호가 없습니다.', { icon: '📋' });
+        if (skippedInvalid > 0) {
+          toast(`유효한 송장번호가 없습니다 (${skippedInvalid}건 건너뜀)`, { icon: '⚠️' });
+        } else {
+          toast('조회 가능한 송장번호가 없습니다.', { icon: '📋' });
+        }
       }
     } catch (error) {
       console.error('배송상태 조회 오류:', error);
