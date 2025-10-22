@@ -20,23 +20,37 @@ if (!admin.apps.length) {
   const privateKey = parsePrivateKey(process.env.FIREBASE_PRIVATE_KEY);
 
   if (!privateKey || !process.env.FIREBASE_CLIENT_EMAIL) {
-    console.error('❌ Firebase Admin 초기화 실패: 환경변수가 설정되지 않았습니다');
-    throw new Error('Firebase Admin credentials are not configured');
+    console.warn('⚠️ Firebase Admin 환경변수가 설정되지 않았습니다. 빌드 시에는 건너뜁니다.');
+    // 빌드 시에는 에러를 던지지 않고 경고만 출력
+    if (process.env.NODE_ENV === 'production' && process.env.VERCEL) {
+      console.error('❌ Firebase Admin 초기화 실패: 환경변수가 설정되지 않았습니다');
+      throw new Error('Firebase Admin credentials are not configured');
+    }
+  } else {
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId: "spx-price",
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: privateKey,
+      }),
+      databaseURL: "https://spx-price.firebaseio.com"
+    });
+
+    console.log('✅ Firebase Admin SDK 초기화 완료');
   }
-
-  admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId: "spx-price",
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: privateKey,
-    }),
-    databaseURL: "https://spx-price.firebaseio.com"
-  });
-
-  console.log('✅ Firebase Admin SDK 초기화 완료');
 }
 
-const db = admin.firestore();
+// Firebase Admin이 초기화되지 않은 경우를 대비한 안전한 db 객체
+const getDb = () => {
+  if (!admin.apps.length) {
+    throw new Error('Firebase Admin is not initialized. Please check your environment variables.');
+  }
+  return admin.firestore();
+};
+
+const db = {
+  collection: (name: string) => getDb().collection(name)
+};
 
 export interface Cafe24Token {
   access_token: string;
