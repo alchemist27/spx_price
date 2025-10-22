@@ -26,8 +26,6 @@ export default function PriceManagement() {
     const adminAuth = localStorage.getItem('admin_auth');
     if (adminAuth === 'true') {
       setIsAdminAuthenticated(true);
-      // Firestore 쓰기 테스트
-      testFirestoreWrite();
       checkAuthStatus();
     } else {
       setIsLoading(false);
