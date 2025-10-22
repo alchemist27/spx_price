@@ -1,8 +1,15 @@
 import axios from 'axios';
 
+// Cafe24Token 인터페이스 정의 (클라이언트/서버 공통)
+export interface Cafe24Token {
+  access_token: string;
+  refresh_token: string;
+  expires_at: number;
+  token_type: string;
+}
+
 // 서버 사이드에서만 firebase-admin import
 let getToken: any, saveToken: any, updateToken: any, isTokenExpired: any;
-let Cafe24Token: any;
 
 if (typeof window === 'undefined') {
   // 서버 사이드
@@ -11,7 +18,6 @@ if (typeof window === 'undefined') {
   saveToken = firebaseAdmin.saveToken;
   updateToken = firebaseAdmin.updateToken;
   isTokenExpired = firebaseAdmin.isTokenExpired;
-  Cafe24Token = firebaseAdmin.Cafe24Token;
 } else {
   // 클라이언트 사이드 - Firebase 함수들은 사용 불가
   getToken = async () => { throw new Error('getToken은 서버에서만 사용 가능합니다'); };
@@ -19,8 +25,6 @@ if (typeof window === 'undefined') {
   updateToken = async () => { throw new Error('updateToken은 서버에서만 사용 가능합니다'); };
   isTokenExpired = () => { throw new Error('isTokenExpired는 서버에서만 사용 가능합니다'); };
 }
-
-export type { Cafe24Token };
 
 export interface Cafe24Product {
   shop_no: number;
