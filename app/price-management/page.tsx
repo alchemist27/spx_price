@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import type { Cafe24Product } from '@/lib/cafe24-client';
+import type { Cafe24Product } from '@/lib/cafe24-api';
 import LoginForm from '@/components/LoginForm';
 import ProductTable from '@/components/ProductTable';
 import AdminLogin from '@/components/AdminLogin';
