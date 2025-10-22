@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getToken } from '@/lib/firebase';
+import { getToken } from '@/lib/firebase-admin';
 
 // API 라우트에서는 NEXT_PUBLIC_ 접두사 없이 환경변수 사용
 const CAFE24_MALL_ID = 'sopexkorea'; // 실제 mall ID 하드코딩

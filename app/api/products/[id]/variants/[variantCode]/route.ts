@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getToken, isTokenExpired, saveToken, Cafe24Token } from '@/lib/firebase';
+import { getToken, isTokenExpired, saveToken, Cafe24Token } from '@/lib/firebase-admin';
 import axios from 'axios';
 
 // API 라우트를 Dynamic으로 설정하여 정적 생성 방지

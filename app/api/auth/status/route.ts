@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getToken } from '@/lib/firebase';
+import { getToken } from '@/lib/firebase-admin';
 
 export const dynamic = 'force-dynamic';
 

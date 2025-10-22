@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getToken, isTokenExpired, saveToken, Cafe24Token } from '@/lib/firebase';
+import { getToken, isTokenExpired, saveToken, Cafe24Token } from '@/lib/firebase-admin';
 import axios from 'axios';
 
 export const dynamic = 'force-dynamic';

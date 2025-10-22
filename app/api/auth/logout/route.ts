@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { deleteToken } from '@/lib/firebase';
+import { deleteToken } from '@/lib/firebase-admin';
 
 export const dynamic = 'force-dynamic';
 
