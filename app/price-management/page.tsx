@@ -30,19 +30,6 @@ export default function PriceManagement() {
     } else {
       setIsLoading(false);
     }
-    
-    // 🧪 개발자 도구에서 테스트 함수 사용 가능하도록 설정
-    if (typeof window !== 'undefined') {
-      (window as any).testVariants = async () => {
-        try {
-          const result = await cafe24API.testProductsWithVariants();
-          return result;
-        } catch (error) {
-          console.error('테스트 에러:', error);
-          return null;
-        }
-      };
-    }
   }, []);
 
   useEffect(() => {
