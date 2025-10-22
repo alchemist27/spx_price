@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { cafe24API } from '@/lib/cafe24-api';
+import { getAuthUrl } from '@/lib/cafe24-client';
 import toast from 'react-hot-toast';
 
 interface LoginFormProps {
@@ -14,7 +14,7 @@ export default function LoginForm({ onLoginSuccess }: LoginFormProps) {
   const handleLogin = async () => {
     setIsLoading(true);
     try {
-      const authUrl = cafe24API.getAuthUrl();
+      const authUrl = getAuthUrl();
       window.location.href = authUrl;
     } catch (error) {
       console.error('Login failed:', error);

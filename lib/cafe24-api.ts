@@ -1,5 +1,26 @@
 import axios from 'axios';
-import { getToken, saveToken, updateToken, isTokenExpired, Cafe24Token } from './firebase-admin';
+
+// 서버 사이드에서만 firebase-admin import
+let getToken: any, saveToken: any, updateToken: any, isTokenExpired: any;
+let Cafe24Token: any;
+
+if (typeof window === 'undefined') {
+  // 서버 사이드
+  const firebaseAdmin = require('./firebase-admin');
+  getToken = firebaseAdmin.getToken;
+  saveToken = firebaseAdmin.saveToken;
+  updateToken = firebaseAdmin.updateToken;
+  isTokenExpired = firebaseAdmin.isTokenExpired;
+  Cafe24Token = firebaseAdmin.Cafe24Token;
+} else {
+  // 클라이언트 사이드 - Firebase 함수들은 사용 불가
+  getToken = async () => { throw new Error('getToken은 서버에서만 사용 가능합니다'); };
+  saveToken = async () => { throw new Error('saveToken은 서버에서만 사용 가능합니다'); };
+  updateToken = async () => { throw new Error('updateToken은 서버에서만 사용 가능합니다'); };
+  isTokenExpired = () => { throw new Error('isTokenExpired는 서버에서만 사용 가능합니다'); };
+}
+
+export type { Cafe24Token };
 
 export interface Cafe24Product {
   shop_no: number;
