@@ -40,7 +40,7 @@ if (!admin.apps.length) {
   }
 }
 
-// Firebase Admin이 초기화되지 않은 경우를 대비한 안전한 db 객체
+// Firebase Admin이 초기화되지 않은 경우를 대비한 안전한 db 접근
 const getDb = () => {
   if (!admin.apps.length) {
     throw new Error('Firebase Admin is not initialized. Please check your environment variables.');
@@ -48,9 +48,13 @@ const getDb = () => {
   return admin.firestore();
 };
 
-const db = {
-  collection: (name: string) => getDb().collection(name)
-};
+// db는 항상 getDb()를 통해 접근하도록 변경
+const db = new Proxy({} as admin.firestore.Firestore, {
+  get: (target, prop) => {
+    const firestore = getDb();
+    return (firestore as any)[prop];
+  }
+});
 
 export interface Cafe24Token {
   access_token: string;
