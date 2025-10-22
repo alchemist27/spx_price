@@ -50,7 +50,7 @@ const getDb = () => {
 
 // db는 항상 getDb()를 통해 접근하도록 변경
 const db = new Proxy({} as admin.firestore.Firestore, {
-  get: (target, prop) => {
+  get: (_target, prop) => {
     const firestore = getDb();
     return (firestore as any)[prop];
   }
