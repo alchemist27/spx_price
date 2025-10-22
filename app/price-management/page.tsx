@@ -136,8 +136,6 @@ export default function PriceManagement() {
 
   const handleAdminLogin = () => {
     setIsAdminAuthenticated(true);
-    // Firestore 쓰기 테스트
-    testFirestoreWrite();
     checkAuthStatus();
   };
 
