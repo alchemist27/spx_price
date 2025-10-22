@@ -2,8 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { getToken, testFirestoreWrite } from '@/lib/firebase';
-import { cafe24API, Cafe24Product } from '@/lib/cafe24-api';
+import { Cafe24Product } from '@/lib/cafe24-api';
 import LoginForm from '@/components/LoginForm';
 import ProductTable from '@/components/ProductTable';
 import AdminLogin from '@/components/AdminLogin';
@@ -63,8 +62,8 @@ export default function PriceManagement() {
 
   const checkAuthStatus = async () => {
     try {
-      const token = await getToken();
-      if (token) {
+      const response = await axios.get('/api/auth/status');
+      if (response.data.authenticated) {
         setIsAuthenticated(true);
         loadProducts();
       }

@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import AdminLogin from '@/components/AdminLogin';
 import LoginForm from '@/components/LoginForm';
-import { getToken } from '@/lib/firebase';
 import toast from 'react-hot-toast';
 import { 
   LogOut, ArrowLeft, RefreshCw, Package, Truck, CheckCircle, 
@@ -136,8 +135,8 @@ export default function OrderManagement() {
 
   const checkAuthStatus = async (initialStartDate?: string, initialEndDate?: string) => {
     try {
-      const token = await getToken();
-      if (token) {
+      const response = await axios.get('/api/auth/status');
+      if (response.data.authenticated) {
         setIsAuthenticated(true);
         // 날짜가 설정된 후에 주문 로드
         if (initialStartDate && initialEndDate) {

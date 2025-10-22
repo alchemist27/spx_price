@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import AdminLogin from '@/components/AdminLogin';
 import { LogOut, Package, DollarSign, ShoppingCart, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { deleteToken } from '@/lib/firebase';
+import axios from 'axios';
 
 export default function Dashboard() {
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
@@ -34,13 +34,18 @@ export default function Dashboard() {
   const handleReauthenticate = async () => {
     const confirmed = confirm('기존 인증 정보를 삭제하고 다시 인증하시겠습니까?\n주문 관리 등 새로운 권한을 사용하려면 재인증이 필요합니다.');
     if (confirmed) {
-      const deleted = await deleteToken();
-      if (deleted) {
-        toast.success('인증 정보가 삭제되었습니다. 다시 로그인해주세요.');
-        // 가격 관리 페이지로 이동하면 자동으로 재인증 프로세스 시작
-        router.push('/price-management');
-      } else {
-        toast.error('인증 정보 삭제에 실패했습니다.');
+      try {
+        const response = await axios.post('/api/auth/logout');
+        if (response.data.success) {
+          toast.success('인증 정보가 삭제되었습니다. 다시 로그인해주세요.');
+          // 가격 관리 페이지로 이동하면 자동으로 재인증 프로세스 시작
+          router.push('/price-management');
+        } else {
+          toast.error('인증 정보 삭제에 실패했습니다.');
+        }
+      } catch (error) {
+        console.error('Logout error:', error);
+        toast.error('인증 정보 삭제 중 오류가 발생했습니다.');
       }
     }
   };
