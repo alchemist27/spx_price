@@ -1,15 +1,39 @@
 import * as admin from 'firebase-admin';
 
+// Private Key 처리: 따옴표 제거 및 개행 문자 처리
+function parsePrivateKey(key: string | undefined): string | undefined {
+  if (!key) return undefined;
+
+  // 따옴표로 감싸져 있으면 제거
+  let parsedKey = key.trim();
+  if ((parsedKey.startsWith('"') && parsedKey.endsWith('"')) ||
+      (parsedKey.startsWith("'") && parsedKey.endsWith("'"))) {
+    parsedKey = parsedKey.slice(1, -1);
+  }
+
+  // \n을 실제 개행 문자로 변환
+  return parsedKey.replace(/\\n/g, '\n');
+}
+
 // Firebase Admin 초기화 (서버 사이드 전용)
 if (!admin.apps.length) {
+  const privateKey = parsePrivateKey(process.env.FIREBASE_PRIVATE_KEY);
+
+  if (!privateKey || !process.env.FIREBASE_CLIENT_EMAIL) {
+    console.error('❌ Firebase Admin 초기화 실패: 환경변수가 설정되지 않았습니다');
+    throw new Error('Firebase Admin credentials are not configured');
+  }
+
   admin.initializeApp({
     credential: admin.credential.cert({
       projectId: "spx-price",
       clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+      privateKey: privateKey,
     }),
     databaseURL: "https://spx-price.firebaseio.com"
   });
+
+  console.log('✅ Firebase Admin SDK 초기화 완료');
 }
 
 const db = admin.firestore();

@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { getToken, saveToken, updateToken, isTokenExpired, Cafe24Token } from './firebase';
+import { getToken, saveToken, updateToken, isTokenExpired, Cafe24Token } from './firebase-admin';
 
 export interface Cafe24Product {
   shop_no: number;
